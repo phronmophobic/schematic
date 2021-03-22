@@ -1,0 +1,31 @@
+{:paths ["src" "resources"]
+ :deps {org.clojure/clojure {:mvn/version "1.10.2"}
+        com.phronemophobic/membrane {:mvn/version "0.9.22-beta"}
+        ;; lilactown/autonormal {:mvn/version "1.1.0"}
+        ;; robertluo/pull {:mvn/version "0.2.10"}
+        datascript/datascript {:mvn/version "1.0.5"}
+        net.sekao/odoyle-rules {:mvn/version "0.8.0"}
+        com.cerner/clara-rules {:mvn/version "0.21.0"}
+        mogenslund/liquid {:mvn/version "2.0.3"}
+        ;; org.clojars.quoll/asami {:mvn/version "1.2.15"}
+        ;;datalevin/datalevin {:mvn/version "0.4.13"}
+        }
+ :aliases
+ {:run-m {:main-opts ["-m" "com.phronemophobic.membrane.schematic"]}
+  :run-x {:ns-default com.phronemophobic.membrane.schematic
+          :exec-fn greet
+          :exec-args {:name "Clojure"}}
+  :test {:extra-paths ["test"]
+         :extra-deps {org.clojure/test.check {:mvn/version "1.1.0"}}}
+  :runner
+  {:extra-deps {com.cognitect/test-runner
+                {:git/url "https://github.com/cognitect-labs/test-runner"
+                 :sha "b6b3193fcc42659d7e46ecd1884a228993441182"}}
+   :main-opts ["-m" "cognitect.test-runner"
+               "-d" "test"]}
+  :uberjar {:replace-deps {seancorfield/depstar {:mvn/version "2.0.171"}}
+            :exec-fn hf.depstar/uberjar
+            :exec-args {:aot true
+                        :jar "schematic.jar"
+                        :main-class "com.phronemophobic.membrane.schematic"
+                        :sync-pom true}}}}
