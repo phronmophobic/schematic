@@ -56,77 +56,59 @@
 (defn code [m]
   (->> (component-code m)
        (with-events m)
-       #_(with-translate elem)))
+       (with-translate m)))
 
 (defmethod component-code :line [{:keys [origin start end stroke-width color]}]
-  `(let [[x# y#] ~origin]
-     (ui/translate
-      x# y#
-      (ui/with-style :membrane.ui/style-stroke
-        (ui/with-color ~color
-          (ui/with-stroke-width ~stroke-width
-            (ui/path ~start
-                     ~end)))))))
+  `(ui/with-style :membrane.ui/style-stroke
+    (ui/with-color ~color
+      (ui/with-stroke-width ~stroke-width
+        (ui/path ~start
+                 ~end)))))
 
 
 (defmethod component-code :rect [{:keys [origin bounds background-color corner-radius fill-style] :as m}]
-  `(let [[x# y#] ~origin
-         [w# h#] ~bounds]
-     (ui/translate
-      x# y#
-      (ui/with-style (get #{:membrane.ui/style-fill
-                            :membrane.ui/style-stroke
-                            :membrane.ui/style-stroke-and-fill}
-                          ~fill-style
-                          :membrane.ui/style-fill) 
-        (ui/with-color ~background-color
-          (if-let [corner-radius# ~corner-radius]
-            (ui/rounded-rectangle w# h# corner-radius#)
-            (ui/rectangle w# h#)))))))
+  `(let [[w# h#] ~bounds]
+     (ui/with-style (get #{:membrane.ui/style-fill
+                           :membrane.ui/style-stroke
+                           :membrane.ui/style-stroke-and-fill}
+                         ~fill-style
+                         :membrane.ui/style-fill)
+       (ui/with-color ~background-color
+         (if-let [corner-radius# ~corner-radius]
+           (ui/rounded-rectangle w# h# corner-radius#)
+           (ui/rectangle w# h#))))))
 
 (defmethod component-code :checkbox [{:keys [origin checked?]}]
-  `(let [[x# y#] ~origin]
-     (ui/translate x# y#
-                   (ui/checkbox ~checked?))))
+  `(ui/checkbox ~checked?))
 
 (defmethod component-code :label [{:keys [origin text]}]
-  `(let [[x# y#] ~origin]
-    (ui/translate x# y#
-                  (ui/label ~text))))
+  `(ui/label ~text))
 
 (defmethod component-code :textarea [{:keys [origin text]}]
-  `(let [[x# y#] ~origin]
-     (ui/translate x# y#
-                   (basic/textarea {:text ~text}))))
+  `(basic/textarea {:text ~text}))
 
 (defmethod component-code :button [{:keys [origin text]}]
-  `(let [[x# y#] ~origin]
-     (ui/translate x# y#
-                   (ui/button ~text))))
+  `(ui/button ~text))
 
 (defmethod component-code :defui [{:keys [origin] :as m}]
-  `(let [[x# y#] ~origin]
-     (ui/translate x# y#
-                   (~(:defui m) ~(dissoc m
-                                         :origin
-                                         :db/id
-                                         :type
-                                         :events
-                                         :defui)))))
+  `(~(:defui m) ~(dissoc m
+                         :origin
+                         :db/id
+                         :type
+                         :events
+                         :defui)))
 
 
 (defmethod component-code :for [{:keys [sym seq origin horizontal? padding] :as m}]
   (let [for-code
         `(for [~sym ~seq]
           ~(code (:component/child m)))]
-   `(let [[x# y#] ~origin]
-      (ui/translate x# y#
-                    (apply
-                     (if ~horizontal? horizontal-layout vertical-layout)
-                     (if-let [padding# ~padding]
-                       (interpose (ui/spacer padding# padding#)
-                                  ~for-code)
-                       ~for-code))))))
+   `(apply
+     (if ~horizontal? horizontal-layout vertical-layout)
+     (if-let [padding# ~padding]
+       (interpose (ui/spacer padding# padding#)
+                  ~for-code)
+       ~for-code))))
 
 
 ;; (defmulti render :type)
