@@ -32,8 +32,33 @@
   :extend-via-metadata true
   (code [this]))
 
-(defmulti code :type)
-(defmethod code :line [{:keys [origin start end stroke-width color]}]
+(defmulti component-code :type)
+
+(defn with-translate [m view]
+  (if-let [origin (:origin m)]
+    `(let [[x# y#] ~origin]
+       (ui/translate x# y#
+                     ~view))
+    view))
+
+(defn with-events [m view]
+  (let [events (:events m)]
+    (if (and (seqable? events)
+             (seq events))
+      `(ui/on ~@(sequence cat
+                          (for [[event handler] events]
+                            [event (if (vector? handler)
+                                     `(fn [& _#] ~handler)
+                                     handler)]))
+              ~view)
+      view)))
+
+(defn code [m]
+  (->> (component-code m)
+       (with-events m)
+       #_(with-translate elem)))
+
+(defmethod component-code :line [{:keys [origin start end stroke-width color]}]
   `(let [[x# y#] ~origin]
      (ui/translate
       x# y#
@@ -44,46 +69,64 @@
                      ~end)))))))
 
 
-(defmethod code :rect [{:keys [origin bounds background-color]}]
+(defmethod component-code :rect [{:keys [origin bounds background-color corner-radius fill-style] :as m}]
   `(let [[x# y#] ~origin
          [w# h#] ~bounds]
      (ui/translate
       x# y#
-      (ui/with-style :membrane.ui/style-stroke
-        (ui/filled-rectangle ~background-color w# h#)))))
+      (ui/with-style (get #{:membrane.ui/style-fill
+                            :membrane.ui/style-stroke
+                            :membrane.ui/style-stroke-and-fill}
+                          ~fill-style
+                          :membrane.ui/style-fill) 
+        (ui/with-color ~background-color
+          (if-let [corner-radius# ~corner-radius]
+            (ui/rounded-rectangle w# h# corner-radius#)
+            (ui/rectangle w# h#)))))))
 
-(defmethod code :checkbox [{:keys [origin checked?]}]
+(defmethod component-code :checkbox [{:keys [origin checked?]}]
   `(let [[x# y#] ~origin]
      (ui/translate x# y#
                    (ui/checkbox ~checked?))))
 
-(defmethod code :label [{:keys [origin text]}]
+(defmethod component-code :label [{:keys [origin text]}]
   `(let [[x# y#] ~origin]
     (ui/translate x# y#
                   (ui/label ~text))))
 
-(defmethod code :textarea [{:keys [origin text]}]
+(defmethod component-code :textarea [{:keys [origin text]}]
   `(let [[x# y#] ~origin]
      (ui/translate x# y#
                    (basic/textarea {:text ~text}))))
 
-(defmethod code :button [{:keys [origin text]}]
+(defmethod component-code :button [{:keys [origin text]}]
   `(let [[x# y#] ~origin]
      (ui/translate x# y#
                    (ui/button ~text))))
 
-(defmethod code :defui [{:keys [origin] :as m}]
+(defmethod component-code :defui [{:keys [origin] :as m}]
   `(let [[x# y#] ~origin]
      (ui/translate x# y#
-                   (~(:defui m) ~(dissoc m :origin)))))
+                   (~(:defui m) ~(dissoc m
+                                         :origin
+                                         :db/id
+                                         :type
+                                         :events
+                                         :defui)))))
 
-(defmethod code :for [{:keys [sym seq origin] :as m}]
-  `(let [[x# y#] ~origin]
-     (ui/translate x# y#
-      (apply
-       vertical-layout
-       (for [~sym ~seq]
-         ~(code (:component/child m)))))))
+
+(defmethod component-code :for [{:keys [sym seq origin horizontal? padding] :as m}]
+  (let [for-code
+        `(for [~sym ~seq]
+          ~(code (:component/child m)))]
+   `(let [[x# y#] ~origin]
+      (ui/translate x# y#
+                    (apply
+                     (if ~horizontal? horizontal-layout vertical-layout)
+                     (if-let [padding# ~padding]
+                       (interpose (ui/spacer padding# padding#)
+                                  ~for-code)
+                       ~for-code))))))
 
 
 ;; (defmulti render :type)
@@ -139,15 +182,7 @@
 ;;                   ((:defui m) (dissoc m :origin)))))
 
 
-(defn with-events [[m view]]
-  (let [events (for [[event handler] (:events m)]
-                 [event (if (vector? handler)
-                          `(fn [& _#] ~handler)
-                          handler)])]
-    (if (seq events)
-      `(ui/on ~@(sequence cat events)
-              ~view)
-      view)))
+
 
 (def schema {:component/layers {:db/cardinality :db.cardinality/many
                                 :db/isComponent true
@@ -234,6 +269,11 @@
 (d/transact! conn [{:name 'foo
                     :type :component}])
 
+(defn save! [fname]
+  (spit fname (pr-str @conn)))
+#_(defn load! [fname]
+  (read-string (slurp fname)))
+
 
 ;; Create a connection to the database
 ;; (def conn (d/connect db-uri))
@@ -251,28 +291,7 @@
 
 
 
-(defonce schematic-state
-  (atom {}))
-(reset!
- schematic-state
- {})
-(swap! schematic-state
-       assoc :tools (set
-                     [{:text "Line"
-                       :value line-tool}
-                      {:text "Rect"
-                       :value rect-tool}
-                      {:text "Checkbox"
-                       :value (make-defui-tool #'basic/checkbox
-                                               {:checked? true})}
-                      {:text "Button"
-                       :value (make-defui-tool #'basic/button)}
-                      {:text "Label"
-                       :value label-tool}
-                      {:text "Textarea2"
-                       :value (make-defui-tool #'basic/textarea
-                                               {:text "wassup?"})}]))
-(def schematic-dispatch! (membrane.component/default-handler schematic-state))
+
 
 
 
@@ -324,6 +343,9 @@
 
 (defeffect ::update-layer-prop [layer-id prop s]
   (d/transact! conn [[:db/add layer-id prop (read-string s)]]))
+
+(defeffect ::delete-layer-prop [layer-id prop]
+  (d/transact! conn [[:db/retract layer-id prop]]))
 
 (defn wrap-for [db layer-id]
   (let [eids (d/q '[:find ?e
@@ -393,7 +415,6 @@
           :hover? (get extra [v :hover?])
           :on-click
           (fn []
-            (prn "selecting layer " (:db/id v))
             [[::select-layer (:db/id v)]])}))
        (let [buf (get bufs [(:db/id layer) k])
              buf (or buf
@@ -402,6 +423,11 @@
                                      :mode :insert}))]
        
          (horizontal-layout
+          (on
+           :mouse-down
+           (fn [_]
+             [[::delete-layer-prop (:db/id layer) k]])
+           (delete-X))
           (basic/button {:text "set"
                          :hover? (get extra $buf)
                          :on-click
@@ -416,23 +442,22 @@
   (let [layer-bindings (for [layer (:component/layers component)]
                          [(symbol (str "x" (:db/id layer)))
                           (code layer)])
-        $prop-bindings (for [arg (:component/args component)]
-                         [(symbol (str "$" (:k arg)))
-                          nil])
         bindings (into []
                        cat
                        (concat
-                        $prop-bindings
                         (for [arg (:component/args component)]
                           [(symbol (:k arg))
                            (:v arg)])
                         layer-bindings))
         ret (into [] (map first) layer-bindings)
-        body `(try
-                (let ~bindings
-                  ~ret)
-                (catch Exception e#
-                  nil))]
+        body `(let [~'extra nil
+                    ~'context nil]
+                ~(membrane.component/path-replace
+                    `(try
+                       (let ~bindings
+                         ~ret)
+                       (catch Exception e#
+                         nil))))]
     ;; (prn body)
     body))
 
@@ -443,7 +468,7 @@
 (defn construct-defui* [component]
   (let [layer-bindings (for [layer (:component/layers component)]
                          [(symbol (str "x" (:db/id layer)))
-                          layer])
+                          (code layer)])
         bindings (into []
                        cat
                        layer-bindings)
@@ -452,9 +477,7 @@
         `(defui ~(:name component) [{:keys [~@(for [arg (:component/args component)]
                                  (symbol (:k arg)))]}]
            (let ~bindings
-             ~(into [] (comp (map (juxt identity code))
-                             (map with-events))
-                    (:component/layers component))))]
+             ~ret))]
     ;; (prn body)
     body))
 
@@ -464,8 +487,8 @@
       (ui/bounds view)
       view)
     (catch Exception e
-      (prn e)
-      (prn (construct* component))
+      (tap> e)
+      (tap> (construct* component))
       nil)))
 
 (def construct-memo (memoize construct))
@@ -528,7 +551,7 @@
   (try
     (eval (find-origins* component))
     (catch Exception e
-      (prn e)
+      (tap> e)
       nil)))
 
 (def find-origins-memo (memoize find-origins))
@@ -552,14 +575,14 @@
                    :body
                    (ui/no-events
                     (ui/try-draw
-                     [(when show-origins?
+                     [view
+                      (when show-origins?
                         (mapv #(let [[x y] %]
                                  (ui/translate
                                   x y
                                   (ui/filled-rectangle [0 0 0]
                                                        3 3)))
-                              (find-origins-memo component)))
-                      view]
+                              (find-origins-memo component)))]
                      nil))})))))
 
 
@@ -603,6 +626,56 @@
                            :component component})
      )))
 
+
+(defeffect ::set-layer-origin [layer-id pos]
+  (d/transact! conn [[:db/add layer-id :origin (mapv int pos)]]))
+
+(defui move-tool [{:keys [component]}]
+  (let [
+        selected-layer-id (get extra :selected-move-layer-id)
+
+        view (construct component)]
+    (ui/on
+     :mouse-down
+     (fn [[mx my :as pos]]
+       (let [selected-origin
+             (loop [origins (seq (find-origins-memo component))
+                    i 0
+                    selected-origin nil
+                    selected-distance (* 10 10)]
+               (if origins
+                 (let [[ox oy] (first origins)
+                       dist (+ (* (- mx ox) (- mx ox))
+                               (* (- my oy) (- my oy)))]
+                   (if (< dist selected-distance )
+                     (recur (next origins) (inc i) i dist)
+                     (recur (next origins) (inc i) selected-origin selected-distance)))
+                 selected-origin))]
+         (when selected-origin
+           (let [layer-id (-> component :component/layers (nth selected-origin) :db/id)]
+             [[:set $selected-layer-id layer-id]
+              [::set-layer-origin layer-id pos]])))
+       #_[[:set $mpos pos]
+          [:delete $temp-pos nil]])
+     :mouse-move
+     (fn [pos]
+       (when selected-layer-id
+         [[::set-layer-origin selected-layer-id pos]]))
+     :mouse-up
+     (fn [pos]
+       (when selected-layer-id
+         [[::set-layer-origin selected-layer-id pos]
+          [:delete $selected-layer-id]]))
+     (let [show-origins? true]
+       (on
+        :set
+        (fn [$ref v]
+          (when-not (= $ref $show-origins?)
+            [[:set $ref v]]))
+        (base-component-view {:view view
+                              :show-origins? show-origins?
+                              :component component}))))))
+
 (defn normalize-rect [start end]
   (let [[x1 y1] start
         [x2 y2] end]
@@ -644,7 +717,6 @@
           [:delete $mpos]]))
      (base-component-view {:view view
                            :component component}))))
-
 
 
 
@@ -735,6 +807,11 @@
                                     {:rows 40 :cols 5
                                      :mode :insert}))]
          (horizontal-layout
+          (on
+           :mouse-down
+           (fn [_]
+             [[::delete-entity (:db/id arg)]])
+           (delete-X))
           (basic/button {:text "set"
                          :hover? (get extra [(:db/id arg) :hover?])
                          :on-click
@@ -766,6 +843,32 @@
             [:db.fn/retractEntity eid])
           eids)))
 
+(defonce schematic-state
+  (atom {}))
+(reset!
+ schematic-state
+ {})
+
+(swap! schematic-state
+       assoc :tools {"Line" {:text "Line"
+                             :value line-tool}
+                     "Move" {:text "Move"
+                             :value move-tool}
+                     "Rect" {:text "Rect"
+                             :value rect-tool}
+                     "Checkbox" {:text "Checkbox"
+                                 :value (make-defui-tool 'membrane.basic-components/checkbox
+                                                         {:checked? true})}
+                     "Button" {:text "Button"
+                               :value (make-defui-tool 'membrane.basic-components/button
+                                                       {:text "action!"})}
+                     "Label" {:text "Label"
+                              :value label-tool}
+                     "Textarea2" {:text "Textarea2"
+                                  :value (make-defui-tool 'membrane.basic-components/textarea
+                                                          {:text "wassup?"})}})
+(def schematic-dispatch! (membrane.component/default-handler schematic-state))
+
 (defeffect ::clear-component [cid]
   (d/transact! conn [[:db.fn/call clear-component cid]]))
 (defeffect ::update-component-name [cid name]
@@ -781,13 +884,17 @@
                     (into {}
                           (for [{:keys [k v]} (:component/args component)]
                             [(keyword k) v])))
-          uivar (eval
-                 (construct-defui* component))]
+          component-code (construct-defui* component)
+          uivar (try
+                  (eval component-code)
+                  (catch Exception e
+                    (clojure.pprint/pprint component-code)
+                    (throw e)))]
       (swap! schematic-state
              update :tools
-             conj {:text (name (:name component))
-                   :value (make-defui-tool uivar
-                                           defaults)}))))
+             assoc (name (:name component)) {:text (name (:name component))
+                                             :value (make-defui-tool (symbol uivar)
+                                                                     defaults)}))))
 
 (defeffect ::add-component []
   (d/transact! conn
@@ -839,7 +946,7 @@
                      :on-click (fn []
                                  [[::clear-component (:db/id c)]])})
       (toolbar {:selected tool
-                :options tools}))
+                :options (vals tools)}))
      (let [component-name (get extra [(:db/id c) :name] "")]
        (horizontal-layout
         (basic/button {:text "save"
@@ -862,8 +969,22 @@
                         :tool tool}))))
 
 (defn current-component []
-  (d/pull @conn '[*]
-          1)
+  (let [                           components
+        (->> (d/q '[:find ?cid ?name
+                    :where
+                    [?cid :type :component]
+                    [?cid :name ?name]]
+                  @conn)
+             (into {} (map (fn [[cid name]]
+                             [cid
+                              {:db/id cid
+                               :name name}]))))
+        selected-component (or (:selected-component @schematic-state)
+                               (-> components
+                                   keys
+                                   first))]
+    (d/pull @conn '[*]
+          selected-component))
   )
 
 (defn make-app
@@ -931,6 +1052,74 @@
 (defn run-schematic []
   (backend/run (make-app #'schematic
                          schematic-state)))
+
+
+(comment
+  (clojure.pprint/pprint
+   (construct-defui* (current-component))))
+
+(comment
+  (require '[rewrite-clj.parser :as p]
+           '[rewrite-clj.node :as n]
+           '[rewrite-clj.zip :as z])
+  ;; (require )
+
+  (-> (z/of-string "[1 2 3]")
+      (z/edit* (fn [vec]
+                 (prn vec
+                      (type vec)
+                      
+                      (update vec :children n/comma-separated))
+                 (update vec :children n/comma-separated)))
+      z/root-string
+      
+      ))
+
+(comment
+  (eval (construct-defui*
+         '{:db/id 1,
+           :name image-placeholder,
+           :type :component,
+           :component/args
+           [{:db/id 3, :k width, :v 42} {:db/id 4, :k height, :v 80}],
+           :component/layers
+           [{:db/id 2,
+             :background-color [0 0 0],
+             :bounds [width height],
+             :corner-radius (/ (min width height) 4),
+             :fill-style :membrane.ui/style-stroke,
+             :origin [0 0],
+             :type :rect}]}))
+  
+
+
+  (let [component
+        '{:db/id 1,
+          :name image-placeholder,
+          :type :component,
+          :component/args
+          [{:db/id 3, :k width, :v 42} {:db/id 4, :k height, :v 80}],
+          :component/layers
+          [{:db/id 2,
+            :background-color [0 0 0],
+            :bounds [width height],
+            :corner-radius (/ (min width height) 4),
+            :fill-style :membrane.ui/style-stroke,
+            :origin [0 0],
+            :type :rect}]}
+        defaults (eval
+                  (into {}
+                        (for [{:keys [k v]} (:component/args component)]
+                          [(keyword k) v])))]
+    (swap! schematic-state
+           update :tools
+           assoc (name (:name component)) {:text (name (:name component))
+                                           :value (make-defui-tool #'image-placeholder
+                                                                   defaults)}))
+  ,)
+
+
+
 
 
 
