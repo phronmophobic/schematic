@@ -1,16 +1,20 @@
 {:paths ["src" "resources"]
- :deps {org.clojure/clojure {:mvn/version "1.10.2"}
-        com.phronemophobic/membrane {:mvn/version "0.9.24-beta-SNAPSHOT"}
-        ;; lilactown/autonormal {:mvn/version "1.1.0"}
-        ;; robertluo/pull {:mvn/version "0.2.10"}
+ :deps {org.clojure/clojure {:mvn/version "1.10.3"}
+        com.phronemophobic/membrane {;;:mvn/version "0.9.25-beta"
+                                     :local/root "../membrane"
+                                     }
         datascript/datascript {:mvn/version "1.0.5"}
-        net.sekao/odoyle-rules {:mvn/version "0.8.0"}
-        com.cerner/clara-rules {:mvn/version "0.21.0"}
         mogenslund/liquid {:mvn/version "2.0.3"}
-        rewrite-clj/rewrite-clj {:mvn/version "1.0.594-alpha"}
+        rewrite-clj/rewrite-clj {:mvn/version "1.0.644-alpha"}
+        clj-http/clj-http {:mvn/version "3.12.2"}
+        org.clojure/data.json {:mvn/version "1.0.0"}
+        camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.2"}
+        com.phronemophobic.membrane/search {:local/root "../search"}
+        ;; github-phronmophobic/clj-oauth2 {:local/root "../clj-oauth2"}
 
-        ;; org.clojars.quoll/asami {:mvn/version "1.2.15"}
-        ;;datalevin/datalevin {:mvn/version "0.4.13"}
+        com.phronemophobic/clj-rtree {:mvn/version "1.0"}
+        instaparse/instaparse {:mvn/version "1.4.10"}
+        org.clojure/test.check {:mvn/version "1.1.0"}
         }
  :aliases
  {:run-m {:main-opts ["-m" "com.phronemophobic.membrane.schematic"]}
@@ -25,9 +29,11 @@
                  :sha "b6b3193fcc42659d7e46ecd1884a228993441182"}}
    :main-opts ["-m" "cognitect.test-runner"
                "-d" "test"]}
-  :uberjar {:replace-deps {seancorfield/depstar {:mvn/version "2.0.171"}}
+  :uberjar {:replace-deps {seancorfield/depstar {:mvn/version "2.0.216"}}
             :exec-fn hf.depstar/uberjar
             :exec-args {:aot true
                         :jar "schematic.jar"
                         :main-class "com.phronemophobic.membrane.schematic"
-                        :sync-pom true}}}}
+                        :sync-pom true}}}
+ :mvn/repos
+ {"space-maven" {:url "https://packages.jetbrains.team/maven/p/skija/maven"}}}
