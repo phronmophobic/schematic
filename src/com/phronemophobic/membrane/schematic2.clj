@@ -18,6 +18,7 @@
 
             [clojure.zip :as z]
             [com.phronemophobic.membrane.search :as search]
+            [com.phronemophobic.membrane.svg :as svg]
             [com.rpl.specter :as specter]
 
             ;; [autonormal.core :as auto]
@@ -1406,10 +1407,18 @@
   (let [layout (:element/layout m)]
     (case layout
       :vertical
-      `(apply vertical-layout ~body)
-
+      (let [spacing (:element/layout-spacing m)]
+        (if (and spacing (pos? spacing))
+          `(apply vertical-layout (interpose (ui/spacer 0 ~spacing)
+                                             ~body))
+          `(apply vertical-layout ~body)))
+      
       :horizontal
-      `(apply horizontal-layout ~body)
+      (let [spacing (:element/layout-spacing m)]
+        (if (and spacing (pos? spacing))
+          `(apply horizontal-layout (interpose (ui/spacer ~spacing 0)
+                                               ~body))
+          `(apply horizontal-layout ~body)))
 
       nil body
 
@@ -1423,6 +1432,13 @@
        (ui/translate (nth pos# 0) (nth pos# 1)
                      ~body))))
 
+(defn compile-transform [body m]
+  (when-let [transform (:element/transform m)]
+    `(backend/transform ~(into []
+                               cat
+                               transform)
+                        ~body)))
+
 (defn compile-bounds [body m]
   (when-let [bounds (:element/bounds m)]
     `(let [bounds# ~bounds]
@@ -1431,7 +1447,29 @@
 
 (defn compile-text [body m]
   (when-let [text (:element/text m)]
-    `(ui/label ~text)))
+    (let [body
+          (if-let [font (:element/font m)]
+            `(ui/label ~text
+                       (ui/font ~(str (:font/name font))
+                                ~(:font/size font)))
+            `(ui/label ~text))
+
+          body (if-let [color (:element/color m)]
+                 (let [color (if-let [element-opacity (:element/opacity m)]
+                               (update color 3 * element-opacity)
+                               color)]
+                   `(ui/with-color ~color ~body))
+                 ;; else
+                 body)]
+      body)))
+
+(defn compile-padding [body m]
+  (when-let [{:padding/keys [top right bottom left]} (:element/padding m)]
+    `(ui/padding ~(or top 0)
+                 ~(or right 0)
+                 ~(or bottom 0)
+                 ~(or left 0)
+                 ~body)))
 
 (defn compile-path [body m]
   (when-let [path (:element/path m)]
@@ -1486,7 +1524,8 @@
 (defn compile-events [body m]
   (when-let [events (:element/events m)]
     (let [handler-bindings
-          (sequence
+          (into
+           []
            (comp (map (fn [[k handler]]
                         [k `(constantly ~handler)]))
                  cat)
@@ -1495,16 +1534,106 @@
         ~@handler-bindings
         ~body))))
 
+
+
+
+
+(defn compile-paint [body m]
+  (let [fills (->> (:element/fills m)
+                   (remove :element/hidden))
+        strokes (->> (:element/strokes m)
+                     (remove :element/hidden))]
+    (when (or (seq fills)
+              (seq strokes))
+      (let [element-opacity (:element/opacity m)
+
+            width# (gensym "width-")
+            height# (gensym "height-")
+
+            rectangle-corner-radii (:element/corner-radius m)
+            corner-radius (if (seqable? rectangle-corner-radii)
+                            (first rectangle-corner-radii)
+                            rectangle-corner-radii)
+
+
+            with-color (fn [paint elem#]
+                         (let [color (:element/color paint [0 0 0 1])
+                               ;; paint opacity
+                               color (if-let [opacity (:element/opacity paint)]
+                                       (update color 3 * opacity)
+                                       color)
+                               ;; element opacity
+                               color (if (and color element-opacity)
+                                       (update color 3 * element-opacity)
+                                       color)]
+                           `(ui/with-color ~color
+                              ~elem#)))
+
+            fill-elems (when (seq fills)
+                         (let [fill-body# (gensym "fill-body-")]
+                           `(let [~fill-body# ~(if (:element/text m)
+                                                 (compile-text nil m)
+                                                 (if-let [fill-paths (seq (:element/fill-path m))]
+                                                   (mapv (fn [commands]
+                                                           `(svg/svg-path ~commands
+                                                                          ~(or (:svg/origin m) [0 0])
+                                                                          ~(or (:svg/bounds m) [0 0])))
+                                                         fill-paths)
+                                                   (if corner-radius
+                                                     `(ui/rounded-rectangle ~width# ~height# ~corner-radius)
+                                                     `(ui/rectangle ~width# ~height#))))]
+                              (ui/with-style :membrane.ui/style-fill
+                                ~(mapv #(with-color % fill-body#) fills)))))
+            stroke-elems (when (seq strokes)
+                           (let [stroke-body# (gensym "stroke-body-")]
+                             `(let [~stroke-body# ~(if (:element/text m)
+                                                     (compile-text m)
+                                                     (if-let [stroke-paths (seq (:element/stroke-path m))]
+                                                       (mapv (fn [commands]
+                                                               `(svg/svg-path ~commands
+                                                                          ~(or (:svg/origin m) [0 0])
+                                                                          ~(or (:svg/bounds m) [0 0])))
+                                                             stroke-paths)
+                                                       (if corner-radius
+                                                         `(ui/rounded-rectangle ~width# ~height# ~corner-radius)
+                                                         `(ui/rectangle ~width# ~height#))))
+
+                                    ~stroke-body# ~(if-let [stroke-weight (:element/stroke-weight m)]
+                                                     `(ui/with-stroke-width ~stroke-weight
+                                                        ~stroke-body#)
+                                                     stroke-body#)]
+                                (ui/with-style :membrane.ui/style-stroke
+                                  ~(mapv #(with-color % stroke-body#) strokes)))))
+            body# (gensym "body-")
+            ]
+        `(let [~body# ~body
+               [~width# ~height#] ~(if-let [bounds (:element/bounds m)]
+                                     bounds
+                                     `(ui/bounds ~body#))]
+           [~fill-elems
+            ~stroke-elems
+            ~body#])))))
+
+(defn compile-case [body m]
+  (when (= :flow-control/case
+           (:element/type m))
+    `(case ~(:flow-control.case/expression m)
+       ~@(into []
+               (comp (map (fn [[k v]]
+                            [k (compile v)]))
+                     cat)
+               (:flow-control.case/clauses m)))))
+
 (def default-passes
   [compile-instance
    compile-hidden
    compile-children
 
    compile-path
-   compile-style
-   compile-stroke-color
+   ;; compile-style
+   ;; compile-stroke-color
    
-   compile-text
+   ;; compile-text
 
    compile-bindings
    compile-defaults
@@ -1512,10 +1641,16 @@
    compile-instance-fn
    ;; compile-events
 
+
+   compile-case
    compile-for
    compile-layout
+   compile-padding
+   compile-paint
+   compile-transform
    compile-position
-   compile-bounds])
+   ;;   compile-bounds
+   ])
 
 (def ^:dynamic *passes* nil)
 
@@ -1549,10 +1684,10 @@
    compile-children
 
    compile-path
-   compile-style
-   compile-stroke-color
+   ;; compile-style
+   ;; compile-stroke-color
    
-   compile-text
+   ;; compile-text
 
    compile-bindings
    ;; compile-defaults
@@ -1561,8 +1696,12 @@
    compile-instance-fn
    compile-events
 
+   compile-case
    compile-for
    compile-layout
+   compile-padding
+   compile-paint
+   compile-transform
    compile-position
    compile-bounds
    compile-defui])
@@ -1570,6 +1709,9 @@
 
 
 
+(defn export-component [component]
+  (binding [*passes* export-passes]
+    (compile component)))
 
 (defn export-store [store]
   (let [comps
@@ -1596,8 +1738,81 @@
 
 (comment
 
-  (backend/run (membrane.component/make-app #'todo-app {}))
+  (require '[com.phronemophobic.membrane.figma :as figma])
 
-  )
+  ;; button
+  (let [view (-> figma/document
+                 (get "children")
+                 (nth 6)
+                 figma/normalize-bounds
+                 figma/figma->membrane)
+        buttons (-> view
+                    (search/keep-all
+                     (fn [m]
+                       (when-let [name (:name m)]
+                         (let [variant (figma/name->variant name)]
+                           (when (and (= "False" (get variant "Loading"))
+                                      (= "None" (get variant "Icon")))
+                             m))))))
+        button (->> buttons
+                    (sort-by (fn [{{:keys [x y]} :absolute-bounding-box}]
+                               (+ x y)))
+                    first)]
+    (def button-figma button)
+    (def button-ast (figma/->ast button)))
+
+
+  ;; checkbox
+  (let [view (-> figma/document
+                 (get "children")
+                 (nth 8)
+                 figma/normalize-bounds
+                 figma/figma->membrane)
+        cbs (-> view
+                (search/keep-all
+                 (fn [m]
+                   (when (= (:type m)
+                            "COMPONENT")
+                     m))))
+        cb (->> cbs
+                (sort-by (fn [{{:keys [x y]} :absolute-bounding-box}]
+                           (+ x y)))
+                first)]
+    (def checkbox-ast (figma/->ast cb)))
+
+  ;; text field
+  (let [view (-> figma/document
+                 (get "children")
+                 (->> (some #(when (= "Text field" (get % "name"))
+                               %)))
+                 figma/normalize-bounds
+                 figma/figma->membrane)
+        fields (-> view
+                   (search/keep-all
+                    (fn [m]
+                      (when (= (:type m)
+                               "COMPONENT")
+                        m))))
+        field (->> fields
+                   (sort-by (fn [{{:keys [x y]} :absolute-bounding-box}]
+                              (+ x y)))
+                   ;; not the first!
+                   second)]
+    (def textfield-figma field)
+    (def textfield-ast (figma/->ast field)))
+
+  (restart-editor)
+  (swap! editor-state update :store #(append-child % ::root
+                                                   (assoc button-ast
+                                                          :element/name "button")))
+  (swap! editor-state update :store #(append-child % ::root
+                                                   (assoc checkbox-ast
+                                                          :element/name "checkbox")) )
+
+  (swap! editor-state update :store #(append-child % ::root
+                                                   (assoc textfield-ast
+                                                          :element/name "textfield")))
+
+  ,)
 
 

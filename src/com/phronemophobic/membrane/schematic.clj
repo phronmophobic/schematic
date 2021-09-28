@@ -10,19 +10,7 @@
             [membrane.component
              :refer [defeffect defui]]
             [membrane.basic-components :as basic]
-            [datascript.core :as d]
-            [clara.rules :as c
-             :refer [defrule defquery insert!]]
-            [clara.rules.accumulators :as acc]
-            
-            ;; [datalevin.core :as d]
-            ;; [autonormal.core :as a]
-            ;;[asami.core :as d]
-
-            ;; datascript.impl.entity
-            ;; [odoyle.rules :as o]
-            
-            )
+            [datascript.core :as d])
   (:gen-class))
 
 
@@ -175,6 +163,19 @@
                               :db/isComponent true
                               :db/valueType :db.type/ref}})
 
+(def hike-schema [{:db/cardinality :db.cardinality/many
+                   :db/isComponent true
+                   :db/valueType :db.type/ref
+                   :db/ident :component/layers}
+                  {:db/cardinality :db.cardinality/one
+                   :db/isComponent true
+                   :db/valueType :db.type/ref
+                   :db/ident :component/child}
+                  {:db/cardinality :db.cardinality/many
+                   ;; :db/isComponent true
+                   :db/valueType :db.type/ref
+                   :db/ident :component/args}])
+
 (defonce last-id (atom 0))
 (defn gen-id []
   (swap! last-id inc))
@@ -321,7 +322,12 @@
        :mouse-down
        (fn [_]
          [[::select-layer (:db/id layer)]])
-       (ui/label (str (:db/id layer) " " (:type layer))))))))
+       (ui/label (str (:db/id layer)
+                      " "
+                      (:type layer)
+                      (when-let [name (:name layer)]
+                        (str " "
+                             name)))))))))
 
 (defeffect ::update-layer-prop [layer-id prop s]
   (d/transact! conn [[:db/add layer-id prop (read-string s)]]))
@@ -800,8 +806,9 @@
                          (fn []
                            [[::update-arg (:db/id arg)
                              arg-name (buffer/text buf)]])})
-          (basic/textarea {:text arg-name})
-          (code-editor/text-editor {:buf buf}))))))
+          (vertical-layout
+           (basic/textarea {:text arg-name})
+           (code-editor/text-editor {:buf buf})))))))
   )
 
 (defeffect ::update-arg [aid k v]
@@ -951,7 +958,7 @@
                         :tool tool}))))
 
 (defn current-component []
-  (let [                           components
+  (let [components
         (->> (d/q '[:find ?cid ?name
                     :where
                     [?cid :type :component]
@@ -968,6 +975,16 @@
     (d/pull @conn '[*]
           selected-component))
   )
+
+(defn all-components []
+  (let [cids
+        (->> (d/q '[:find ?cid
+                    :where
+                    [?cid :type :component]]
+                  @conn)
+             (map first))]
+    (d/pull-many @conn '[*]
+                 cids)))
 
 (defn make-app
   ([ui-var ephemeral-state]
@@ -1099,6 +1116,7 @@
                                            :value (make-defui-tool #'image-placeholder
                                                                    defaults)}))
   ,)
+
 
 
 

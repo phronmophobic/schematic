@@ -1,8 +1,10 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
         com.phronemophobic/membrane {;;:mvn/version "0.9.25-beta"
-                                     :local/root "../membrane"
+                                     :local/root "../membrane2"
                                      }
+        com.phronemophobic.membrane/skialib-macosx {:mvn/version "0.9.27-beta"}
+
         datascript/datascript {:mvn/version "1.0.5"}
         mogenslund/liquid {:mvn/version "2.0.3"}
         rewrite-clj/rewrite-clj {:mvn/version "1.0.644-alpha"}
