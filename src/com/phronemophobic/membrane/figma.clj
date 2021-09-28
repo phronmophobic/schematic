@@ -1314,19 +1314,12 @@
 
   (require '[com.phronemophobic.membrane.schematic2 :as s2])
 
-  (def buttons
-    (-> view
-        (search/keep-all
-         (fn [m]
-           (when-let [name (:name m)]
-             (let [variant (name->variant name)]
-               (when (and (= "False" (get variant "Loading"))
-                          (= "None" (get variant "Icon")))
-                 m)))))))
-  
+  (def button-view (-> views
+                       (nth 6)))
+
   (def buttons2
     (->> (search/find-all
-          view
+          button-view
           (fn [m]
             (= "COMPONENT_SET"
                (:type m))))
@@ -1389,7 +1382,8 @@
 
   (-> schematic-button-component
       com.phronemophobic.membrane.schematic2/export-component
-      )
+      eval)
+
   (def button-table (into []
                           (comp
                            (map (fn [m]
@@ -1424,6 +1418,172 @@
 
 
 
+
+
+    ,)
+
+(comment
+  ;; checkboxes
+  (def checkbox-view (-> views
+                         (nth 8)))
+
+  (def checkboxes
+    (->> (search/find-all
+          checkbox-view
+          (fn [m]
+            (= "COMPONENT_SET"
+               (:type m))))
+         (map z/node)
+         (mapcat (fn [cset]
+                   (let [style (name->style (:name cset))
+                         variants (search/keep-all
+                                   cset
+                                   (fn [m]
+                                     (when-let [name (:name m)]
+                                       (let [variant (name->variant name)]
+                                         (when (and (seq variant)
+                                                    (= "False" (get variant "Required")))
+                                          m)))))]
+                     (->>
+                      variants
+                      (map (fn [m]
+                             (letfn [(->keyword [s]
+                                       (-> s
+                                           csk/->kebab-case
+                                           keyword))]
+                               (let [params (-> (name->variant (:name m))
+                                                (dissoc "Required")
+                                                (->> (reduce-kv
+                                                      (fn [m k v]
+                                                        (assoc m
+                                                               (->keyword k)
+                                                               (case v
+                                                                 "True" true
+                                                                 "False" false
+                                                                 (->keyword v))))
+                                                      {}))
+                                                (assoc :style (->keyword style)))]
+                                 (assoc m :figma/parameters params)))))))))))
+
+  (def cb-table (into []
+                      (comp
+                       (map (fn [m]
+                              (with-meta m
+                                {:id (:id m)
+                                 :figma m})))
+                       (map (preserve-meta ->ast))
+                       (map (preserve-meta #(dissoc % :element/position)))
+                       (map (preserve-meta s2/compile))
+                       (map (preserve-meta eval))
+                       (map (fn [view]
+                              (let [[x y :as pos] (-> view meta :figma ->ast :element/position)]
+                                (ui/translate 
+                                 x y
+                                 (ui/on
+                                  :mouse-down
+                                  (fn [_]
+                                    (tap> (-> view meta :figma
+                                              :figma/parameters))
+                                    nil)
+                                  (ui/try-draw 
+                                   view
+                                   (fn [draw e]
+                                     (prn e)
+                                     (draw (ui/label (str (:id (meta view))"!!!")))))))))))
+                      checkboxes))
+
+
+
+  (backend/run (membrane.component/make-app #'figma-viewer {:view cb-table}))
+
+    (def schematic-checkbox-component
+    {:component/defaults {:checked false
+                          :invalid false
+                          :indeterminate false
+                          :state :default
+                          :style :default}
+     :element/type :element/component
+     :element/name "figma-checkbox"
+     :element/children
+     [{:element/type :flow-control/case
+       :flow-control.case/expression '{:checked checked
+                                       :invalid invalid
+                                       :indeterminate indeterminate
+                                       :state state
+                                       :style style}
+       :flow-control.case/clauses
+       (into {}
+             (comp (map (fn [m]
+                          (assoc m :type "GROUP")))
+                   (map #(dissoc % :name))
+                   
+                   (map (juxt :figma/parameters ->ast))
+                   (map (fn [[k m]]
+                          [k
+                           (-> (search/find m :element/text)
+                               (z/edit (constantly ::search/delete)) 
+                               z/root)]))
+                   (map (fn [[k m]]
+                          [k (dissoc m :element/position)])))
+             checkboxes)}]})
+
+    (-> schematic-checkbox-component
+        com.phronemophobic.membrane.schematic2/export-component
+        eval)
+
+    
+
+    (do
+      (defui figma-checkbox-with-hover [{:keys [checked? invalid? indeterminate? state hover?]
+                                         :or {checked? false
+                                              invalid? false
+                                              indeterminate? false
+                                              state :default}
+                                         }]
+        (ui/on
+         :mouse-down
+         (fn [_]
+           [[::basic/toggle $checked?]])
+         (basic/on-hover {:hover? hover?
+                          :body
+                          (figma-checkbox {:state (if hover?
+                                                    :hover
+                                                    state)
+                                           :checked checked?
+                                           :invalid invalid?
+                                           :style :default
+                                           :indeterminate indeterminate?})})))
+
+      (defui checkbox-app [{:keys []}]
+        (let [all-cbs
+              (for [{:keys [invalid
+                            indeterminate
+                            state]}
+                    (->> (search/some schematic-checkbox-component
+                                      :flow-control.case/clauses)
+                         keys
+                         (remove #(= (:state %) :hover))
+                         (remove #(:checked %))
+                         distinct)]
+                (let [checked (get extra [:checked? [invalid indeterminate state]]
+                                   false)]
+                 (figma-checkbox-with-hover
+                  {:state state
+                   :indeterminate? indeterminate
+                   :invalid? invalid
+                   ;; :hover? (get extra [:hover? [checked invalid indeterminate state]])
+                   :checked? checked})))]
+          (ui/table-layout
+           (partition-all
+            (int (Math/sqrt (count all-cbs)))
+            all-cbs)
+           8 8)))
+
+      (skia/run
+        (membrane.component/make-app #'checkbox-app))
+
+
+      ,)
 
 
   ,)
@@ -1468,4 +1628,9 @@
      8 8))
 
   (skia/run
-    (membrane.component/make-app #'button-app)))
+    (membrane.component/make-app #'button-app))
+
+  ,)
+
+
+

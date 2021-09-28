@@ -1703,7 +1703,7 @@
    compile-paint
    compile-transform
    compile-position
-   compile-bounds
+   ;; compile-bounds
    compile-defui])
 
 
