@@ -192,10 +192,6 @@
      ))
 
   
-  (def styles (get-file-styles
-                ;; Atlassian design system! :D
-               "sAEkytxl4mv5COV7unNcjV"))
-
   (def body design-system-response)
 
   (def document (get body "document"))
@@ -1275,16 +1271,21 @@
       (if match
         (let [[s k v] match]
           (recur (subs name (count s))
-                 (conj m [k v])))
+                 (conj m [(csk/->kebab-case-keyword k)
+                          (case v
+                            "True" true
+                            "False" false
+                            (csk/->kebab-case-keyword v))])))
         m))))
 
 
 (defn name->style [name]
-  (let [match (re-find #"\((.*)\)$" name)]
-    (if match
-      (let [[s style] match]
-        style)
-      "default")))
+  (csk/->kebab-case-keyword
+   (let [match (re-find #"\((.*)\)$" name)]
+     (if match
+       (let [[s style] match]
+         style)
+       "default"))))
 
 (defn preserve-meta [f]
   (fn [o]
@@ -1314,10 +1315,12 @@
 
   (require '[com.phronemophobic.membrane.schematic2 :as s2])
 
-  (def button-view (-> views
-                       (nth 6)))
+  (def button-view (some #(when (and (= "CANVAS" (:type %))
+                                     (= "Button" (:name %)))
+                              %)
+                           views))
 
-  (def buttons2
+  (def buttons
     (->> (search/find-all
           button-view
           (fn [m]
@@ -1331,25 +1334,16 @@
                                    (fn [m]
                                      (when-let [name (:name m)]
                                        (let [variant (name->variant name)]
-                                         (when (and (= "False" (get variant "Loading"))
-                                                    (= "None" (get variant "Icon")))
+                                         (when (and (= false (:loading variant))
+                                                    (= :none (:icon variant)))
                                            m)))))]
                      (->>
                       variants
                       (map (fn [m]
-                             (letfn [(->keyword [s]
-                                       (-> s
-                                           csk/->kebab-case
-                                           keyword))]
-                               (let [params (-> (name->variant (:name m))
-                                              (dissoc "Loading" "Icon")
-                                              (->> (reduce-kv
-                                                    (fn [m k v]
-                                                      (assoc m
-                                                             (->keyword k) (->keyword v)))
-                                                    {}))
-                                              (assoc :style (->keyword style)))]
-                                 (assoc m :figma/parameters params)))))))))))
+                             (let [params (-> (name->variant (:name m))
+                                              (dissoc :loading :icon)
+                                              (assoc :style style))]
+                               (assoc m :figma/parameters params))))))))))
 
   (def schematic-button-component
     {:component/defaults {:state :default
@@ -1378,7 +1372,7 @@
                                z/root)]))
                    (map (fn [[k m]]
                           [k (dissoc m :element/position)])))
-             buttons2)}]})
+             buttons)}]})
 
   (-> schematic-button-component
       com.phronemophobic.membrane.schematic2/export-component
@@ -1411,7 +1405,7 @@
                           buttons))
     (backend/run (membrane.component/make-app #'figma-viewer {:view button-table}))
 
-    (def test-ast (->ast (->> buttons
+    #_(def test-ast (->ast (->> buttons
                               (sort-by (fn [{{:keys [x y]} :absolute-bounding-box}]
                                          (+ x y)))
                               first)))
@@ -1424,9 +1418,10 @@
 
 (comment
   ;; checkboxes
-  (def checkbox-view (-> views
-                         (nth 8)))
-
+  (def checkbox-view (some #(when (and (= "CANVAS" (:type %))
+                                       (= "Checkbox" (:name %)))
+                              %)
+                           views))
   (def checkboxes
     (->> (search/find-all
           checkbox-view
@@ -1442,28 +1437,15 @@
                                      (when-let [name (:name m)]
                                        (let [variant (name->variant name)]
                                          (when (and (seq variant)
-                                                    (= "False" (get variant "Required")))
+                                                    (= false (:required variant)))
                                           m)))))]
                      (->>
                       variants
                       (map (fn [m]
-                             (letfn [(->keyword [s]
-                                       (-> s
-                                           csk/->kebab-case
-                                           keyword))]
-                               (let [params (-> (name->variant (:name m))
-                                                (dissoc "Required")
-                                                (->> (reduce-kv
-                                                      (fn [m k v]
-                                                        (assoc m
-                                                               (->keyword k)
-                                                               (case v
-                                                                 "True" true
-                                                                 "False" false
-                                                                 (->keyword v))))
-                                                      {}))
-                                                (assoc :style (->keyword style)))]
-                                 (assoc m :figma/parameters params)))))))))))
+                             (let [params (-> (name->variant (:name m))
+                                              (dissoc :required)
+                                              (assoc :style style))]
+                               (assoc m :figma/parameters params))))))))))
 
   (def cb-table (into []
                       (comp
@@ -1496,7 +1478,7 @@
 
   (backend/run (membrane.component/make-app #'figma-viewer {:view cb-table}))
 
-    (def schematic-checkbox-component
+  (def schematic-checkbox-component
     {:component/defaults {:checked false
                           :invalid false
                           :indeterminate false
@@ -1586,9 +1568,266 @@
       ,)
 
 
+    ,)
+
+
+(comment
+  ;; dropdown
+  (def dropdown-view
+    (some #(when (and (= "CANVAS" (:type %))
+                      (= "Dropdown menu " (:name %)))
+                              %)
+                           views))
+
+  (def dropdowns
+    (->> (search/keep-all
+          dropdown-view
+          (fn [m]
+            (when (and (= "COMPONENT_SET"
+                          (:type m))
+                       (= "Dropdown"
+                          (:name m)))
+              m)))
+         (mapcat (fn [cset]
+                   (let [variants (search/keep-all
+                                   cset
+                                   (fn [m]
+                                     (when-let [name (:name m)]
+                                       (let [variant (name->variant name)]
+                                         (when (seq variant)
+                                           m)))))]
+                     (->>
+                      variants
+                      (map (fn [m]
+                             (let [params (name->variant (:name m))]
+                               (assoc m :figma/parameters params))))))))))
+
+  (def dropdown-table (into []
+                            (comp
+                             (map (fn [m]
+                                    (with-meta m
+                                      {:id (:id m)
+                                       :figma m})))
+                             (map (preserve-meta ->ast))
+                             (map (preserve-meta #(dissoc % :element/position)))
+                             (map (preserve-meta s2/compile))
+                             (map (preserve-meta eval))
+                             (map (fn [view]
+                                    (let [[x y :as pos] (-> view meta :figma ->ast :element/position)]
+                                      (ui/translate 
+                                       x y
+                                       (ui/on
+                                        :mouse-down
+                                        (fn [_]
+                                          (tap> (-> view meta :figma
+                                                    :figma/parameters))
+                                          nil)
+                                        (ui/try-draw 
+                                         view
+                                         (fn [draw e]
+                                           (prn e)
+                                           (draw (ui/label (str (:id (meta view))"!!!")))))))))))
+                            dropdowns))
+
+
+
+  (backend/run (membrane.component/make-app #'figma-viewer {:view dropdown-table}))
+
+  (def schematic-dropdown-component
+    {:component/defaults {:open false
+                          :state :default
+                          :options ["a" "b" "c"]
+                          :text "Options"
+                          :loading false}
+     :element/type :element/component
+     :element/name "figma-dropdown"
+     :element/children
+     [{:element/type :flow-control/case
+       :flow-control.case/expression '{:open open
+                                       :state state
+                                       :dropdown (if loading
+                                                   :loading
+                                                   :default)}
+       :flow-control.case/clauses
+       (into {}
+             (comp (map (fn [m]
+                          (assoc m :type "GROUP")))
+                   (map #(dissoc % :name))
+                   (map (juxt :figma/parameters ->ast))
+                   (map (fn [[k m]]
+                          [k (-> (search/find m #{"Choices"})
+                                 (z/edit (constantly 'text))
+                                 z/root)]))
+
+                   (map (fn [[k m]]
+                          (let [zmenu (search/find m #(when-let [name (:element/name %)]
+                                                        (clojure.string/includes? name "Dropdown Menu")))]
+                            [k (if-not zmenu
+                                 m
+                                 (-> zmenu
+                                     (z/edit (fn [x]
+                                               (-> x
+                                                   (assoc :element/for-bindings '[option options])
+                                                   (update :element/children
+                                                           (fn [xs]
+                                                             (let [zoption (-> (first xs)
+                                                                               (search/find #(= "Option"
+                                                                                                (:element/text %))))]
+                                                               (if zoption
+                                                                 [(-> zoption
+                                                                      (z/edit assoc :element/text 'option)
+                                                                      z/root)]
+                                                                 xs))))
+                                                   (assoc :element/strokes [#:element{:color [0.933
+                                                                                              0.933
+                                                                                              0.933
+                                                                                              1.0],
+                                                                                      :fill-type "SOLID"}]))
+                                               ))
+                                     z/root))])))
+                   (map (fn [[k m]]
+                          [k (dissoc m :element/position)])))
+             dropdowns)}]})
+
+  (-> schematic-dropdown-component
+      com.phronemophobic.membrane.schematic2/export-component
+      eval)
+
+
   ,)
 
+(comment
+  ;; dropdown
+  (def textfield-view
+    (some #(when (and (= "CANVAS" (:type %))
+                      (= "Text field" (:name %)))
+                              %)
+                           views))
 
+  (def textfields
+    (->> (search/keep-all
+          textfield-view
+          (fn [m]
+            (when (and (= "COMPONENT_SET"
+                          (:type m))
+                       (#{"Text field"
+                          "Text field (subtle)"}
+                        (:name m)))
+              m)))
+         (mapcat (fn [cset]
+                   (let [style (name->style (:name cset))
+                         variants (search/keep-all
+                                   cset
+                                   (fn [m]
+                                     (when-let [name (:name m)]
+                                       (let [variant (name->variant name)]
+                                         (when (seq variant)
+                                           (when (and (= :none (:element variant)))
+                                             m))))))]
+                     (->>
+                      variants
+                      (map (fn [m]
+                             (let [params (-> (name->variant (:name m))
+                                              (dissoc :element)
+                                              (assoc :style style))]
+                               (assoc m :figma/parameters params))))))))))
+
+  (def textfield-table (into []
+                             (comp
+                              (map (fn [m]
+                                     (with-meta m
+                                       {:id (:id m)
+                                        :figma m})))
+                              (map (preserve-meta ->ast))
+                              (map (preserve-meta #(dissoc % :element/position)))
+                              (map (preserve-meta s2/compile))
+                              (map (preserve-meta eval))
+                              (map (fn [view]
+                                     (let [[x y :as pos] (-> view meta :figma ->ast :element/position)]
+                                       (ui/translate 
+                                        x y
+                                        (ui/on
+                                         :mouse-down
+                                         (fn [_]
+                                           (tap> (-> view meta :figma
+                                                     :figma/parameters))
+                                           nil)
+                                         (ui/try-draw 
+                                          view
+                                          (fn [draw e]
+                                            (prn e)
+                                            (draw (ui/label (str (:id (meta view))"!!!")))))))))))
+                             textfields))
+
+
+
+  (backend/run (membrane.component/make-app #'figma-viewer {:view textfield-table}))
+
+  (def schematic-textfield-component
+    {:component/defaults {:state :default,
+                          :placeholder false,
+                          :compact false,
+                          :text "My text" 
+                          :style :default}
+     :element/type :element/component
+     :element/name "figma-textfield"
+     :element/children
+     [{:element/type :flow-control/case
+       :flow-control.case/expression '{:state state
+                                       :placeholder placeholder
+                                       :compact compact
+                                       :style style}
+       :flow-control.case/clauses
+       (into {}
+             (comp (map (fn [m]
+                          (assoc m :type "GROUP")))
+                   (map #(dissoc % :name))
+                   
+                   
+                   (map (juxt :figma/parameters ->ast))
+                   (map (fn [[k m]]
+                          [k (-> (search/find m (fn [m]
+                                                  (and (= "Text" (:element/text m))
+                                                       (= :element/label (:element/type m)))))
+                                 (z/edit #(assoc % :element/text 'text))
+                                 z/root)]))
+                   (map (fn [[k m]]
+                          (let [match (search/find m (fn [m]
+                                                       (when-let [name (:element/name m)]
+                                                         (.startsWith name "Caret"))))]
+                            [k (if match
+                                 (-> match
+                                     (z/edit (constantly ::search/delete))
+                                     z/root)
+                                 m)])))
+                   (map (fn [[k m]]
+                          [k (dissoc m :element/position)])))
+             textfields)}]})
+
+  (-> schematic-textfield-component
+      com.phronemophobic.membrane.schematic2/export-component
+      eval)
+
+
+  (defui textfield-app [{:keys []}]
+    (let [all-textfields
+          (for [variant (map :figma/parameters textfields)]
+            (figma-textfield
+             {:state (:state variant)
+              :placeholder (:placeholder variant)
+              :compact (:compact variant)
+              :text (pr-str variant)
+              :style (:style variant)}))]
+      (ui/table-layout
+       (partition-all
+        (int (Math/sqrt (count all-textfields)))
+        all-textfields)
+       8 8)))
+
+  (backend/run (membrane.component/make-app #'figma-viewer {:view (textfield-app {})}) ) 
+
+
+  ,)
 
 (declare document)
 (defn show-view [n]
