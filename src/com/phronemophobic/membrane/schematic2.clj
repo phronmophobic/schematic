@@ -559,6 +559,7 @@
        [[::add-element $store
          #:element{:position pos
                    :type :element/label,
+                   :fills [{}]
                    :text "asfd"}]])
      [(ui/with-style :membrane.ui/style-stroke
         (ui/rectangle 800 800))
