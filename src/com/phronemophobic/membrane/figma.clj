@@ -1697,7 +1697,6 @@
   ,)
 
 (comment
-  ;; dropdown
   (def textfield-view
     (some #(when (and (= "CANVAS" (:type %))
                       (= "Text field" (:name %)))
