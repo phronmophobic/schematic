@@ -7,6 +7,9 @@
             [camel-snake-kebab.core :as csk]
             [camel-snake-kebab.extras :as cske]
             ;;[membrane.skija :as backend]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]
+
             [membrane.skia :as backend]
             [membrane.skia :as skia]
             [com.phronemophobic.membrane.search :as search]
