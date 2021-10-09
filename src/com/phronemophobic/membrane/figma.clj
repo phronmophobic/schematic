@@ -175,11 +175,7 @@
 (defonce selection (atom nil))
 (defonce zelection (atom nil))
 
-(defeffect ::select [m z]
-  (reset! selection m)
-  (reset! zelection z)
-  
-  (tap> m))
+
 
 (declare figma->membrane
          normalize-bounds)
@@ -674,7 +670,12 @@
        nil
        render-pipeline))))
 
-(defmulti ->ast :type)
+(defmulti ->ast* :type)
+(defn ->ast [elem]
+  (let [ast (->ast* elem)]
+    (if-let [params (:figma/parameters elem)]
+      (assoc ast :figma/parameters params)
+      ast)))
 
 (defn ast-position [m]
   (if-let [{:keys [x y]} (:relative-bounding-box m)]
@@ -721,7 +722,7 @@
        (when (seq strokes)
          {:element/strokes strokes})))))
 
-(defmethod ->ast "TEXT" [m]
+(defmethod ->ast* "TEXT" [m]
   (let [font-style (:style m)
         
         font-size (:font-size font-style)
@@ -818,7 +819,7 @@
                                                           (assoc bb
                                                                  :x local-x
                                                                  :y local-y))))))
-                                            (map ->ast)
+                                            (map ->ast*)
                                             (map #(if auto?
                                                     (dissoc % :element/position)
                                                     %)))
@@ -826,19 +827,19 @@
            (ast-background m)
            (ast-position m))))
 
-(defmethod ->ast "COMPONENT" [m]
+(defmethod ->ast* "COMPONENT" [m]
   (merge (ast-frame m)
          {:element/type :element/component}))
 
-(defmethod ->ast "FRAME" [m]
+(defmethod ->ast* "FRAME" [m]
   (merge (ast-frame m)
          {:element/type :element/group}))
 
-(defmethod ->ast "GROUP" [m]
+(defmethod ->ast* "GROUP" [m]
   (merge (ast-frame m)
          {:element/type :element/group}))
 
-(defmethod ->ast "INSTANCE" [m]
+(defmethod ->ast* "INSTANCE" [m]
   (merge (ast-frame m)
          {:element/type :element/group}))
 
@@ -869,19 +870,19 @@
                                              (map parse-svg-path))
                                        geoms)})))
 
-(defmethod ->ast "LINE" [m]
+(defmethod ->ast* "LINE" [m]
   (ast-vector m))
 
-(defmethod ->ast "VECTOR" [m]
+(defmethod ->ast* "VECTOR" [m]
   (ast-vector m))
 
-(defmethod ->ast "ELLIPSE" [m]
+(defmethod ->ast* "ELLIPSE" [m]
   (ast-vector m))
 
-(defmethod ->ast "BOOLEAN_OPERATION" [m]
+(defmethod ->ast* "BOOLEAN_OPERATION" [m]
  (ast-vector m))
 
-(defmethod ->ast "RECTANGLE" [m]
+(defmethod ->ast* "RECTANGLE" [m]
   (merge {:element/id (:id m)
           :element/type :element/shape}
          (when-let [name (:name m)]
