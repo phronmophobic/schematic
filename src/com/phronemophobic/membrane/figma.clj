@@ -1442,7 +1442,7 @@
                                        (let [variant (name->variant name)]
                                          (when (and (seq variant)
                                                     (= false (:required variant)))
-                                          m)))))]
+                                           m)))))]
                      (->>
                       variants
                       (map (fn [m]
@@ -1513,75 +1513,211 @@
                           [k (dissoc m :element/position)])))
              checkboxes)}]})
 
-    (-> schematic-checkbox-component
-        com.phronemophobic.membrane.schematic2/export-component
-        eval)
+  (-> schematic-checkbox-component
+      com.phronemophobic.membrane.schematic2/export-component
+      eval)
 
-    
+  (do
+    (defui figma-checkbox-with-hover [{:keys [checked? invalid? indeterminate? state hover?]
+                                       :or {checked? false
+                                            invalid? false
+                                            indeterminate? false
+                                            state :default}
+                                       }]
+      (ui/on
+       :mouse-down
+       (fn [_]
+         [[::basic/toggle $checked?]])
+       (basic/on-hover {:hover? hover?
+                        :body
+                        (figma-checkbox {:state (if hover?
+                                                  :hover
+                                                  state)
+                                         :checked checked?
+                                         :invalid invalid?
+                                         :style :default
+                                         :indeterminate indeterminate?})})))
 
-    (do
-      (defui figma-checkbox-with-hover [{:keys [checked? invalid? indeterminate? state hover?]
-                                         :or {checked? false
-                                              invalid? false
-                                              indeterminate? false
-                                              state :default}
-                                         }]
-        (ui/on
-         :mouse-down
-         (fn [_]
-           [[::basic/toggle $checked?]])
-         (basic/on-hover {:hover? hover?
-                          :body
-                          (figma-checkbox {:state (if hover?
-                                                    :hover
-                                                    state)
-                                           :checked checked?
-                                           :invalid invalid?
-                                           :style :default
-                                           :indeterminate indeterminate?})})))
+    (defui checkbox-app [{:keys []}]
+      (let [all-cbs
+            (for [{:keys [invalid
+                          indeterminate
+                          state]}
+                  (->> (search/some schematic-checkbox-component
+                                    :flow-control.case/clauses)
+                       keys
+                       (remove #(= (:state %) :hover))
+                       (remove #(:checked %))
+                       distinct)]
+              (let [checked (get extra [:checked? [invalid indeterminate state]]
+                                 false)]
+                (figma-checkbox-with-hover
+                 {:state state
+                  :indeterminate? indeterminate
+                  :invalid? invalid
+                  ;; :hover? (get extra [:hover? [checked invalid indeterminate state]])
+                  :checked? checked})))]
+        (ui/table-layout
+         (partition-all
+          (int (Math/sqrt (count all-cbs)))
+          all-cbs)
+         8 8)))
 
-      (defui checkbox-app [{:keys []}]
-        (let [all-cbs
-              (for [{:keys [invalid
-                            indeterminate
-                            state]}
-                    (->> (search/some schematic-checkbox-component
-                                      :flow-control.case/clauses)
-                         keys
-                         (remove #(= (:state %) :hover))
-                         (remove #(:checked %))
-                         distinct)]
-                (let [checked (get extra [:checked? [invalid indeterminate state]]
-                                   false)]
-                 (figma-checkbox-with-hover
-                  {:state state
-                   :indeterminate? indeterminate
-                   :invalid? invalid
-                   ;; :hover? (get extra [:hover? [checked invalid indeterminate state]])
-                   :checked? checked})))]
-          (ui/table-layout
-           (partition-all
-            (int (Math/sqrt (count all-cbs)))
-            all-cbs)
-           8 8)))
-
-      (skia/run
-        (membrane.component/make-app #'checkbox-app))
-
-
-      ,)
+    (skia/run
+      (membrane.component/make-app #'checkbox-app))
 
 
     ,)
 
 
+  ,)
+
+
 (comment
+
+  (def parts-view
+    (some #(when (and (= "CANVAS" (:type %))
+                      (= "​🧱 Parts" (:name %)))
+             %)
+          views))
+
+  (def dropdown-items
+    (->> (search/keep-all
+          parts-view
+          (fn [m]
+            (when (and (= "COMPONENT_SET"
+                          (:type m))
+                       (= "Dropdown Item"
+                          (:name m)))
+              m)))
+         (mapcat (fn [cset]
+                   (let [variants (search/keep-all
+                                   cset
+                                   (fn [m]
+                                     (when-let [name (:name m)]
+                                       (let [variant (name->variant name)]
+                                         (when (seq variant)
+                                           m)))))]
+                     (->>
+                      variants
+                      (map (fn [m]
+                             (let [params (name->variant (:name m))]
+                               (assoc m :figma/parameters params))))))))))
+
+  (def dropdown-item-table
+    (let [dropdown-items
+          (into []
+                (comp
+                 (map (fn [m]
+                        (with-meta m
+                          {:id (:id m)
+                           :figma m})))
+                 (map (preserve-meta ->ast))
+                 (map (preserve-meta #(dissoc % :element/position)))
+                 (map (preserve-meta s2/compile))
+                 (map (preserve-meta eval))
+                 (map (fn [view]
+                        (let [[x y :as pos] (-> view meta :figma ->ast :element/position)]
+                          (ui/on
+                           :mouse-down
+                           (fn [_]
+                             (tap> (-> view meta :figma
+                                       :figma/parameters))
+                             nil)
+                           (ui/try-draw 
+                            view
+                            (fn [draw e]
+                              (prn e)
+                              (draw (ui/label (str (:id (meta view))"!!!"))))))))))
+                dropdown-items)]
+      (ui/table-layout (partition-all 2 dropdown-items)
+                       5 5)))
+
+  (backend/run (membrane.component/make-app #'figma-viewer {:view dropdown-item-table}))
+
+  (def schematic-dropdown-item-component
+    {:component/defaults {:state :default
+                          :text "Option"}
+     :element/type :element/component
+     :element/name "figma-dropdown-item"
+     :element/children
+     [{:element/type :flow-control/case
+       :flow-control.case/expression '{:state state}
+       :flow-control.case/clauses
+       (into {}
+             (comp (map (fn [m]
+                          (assoc m :type "GROUP")))
+                   (map #(dissoc % :name))
+                   (map ->ast)
+                   (map (fn [m]
+                          (-> (search/find m (fn [m]
+                                               (= "Option"
+                                                  (:element/text m))))
+                              (z/edit assoc :element/text 'text)
+                              z/root)))
+                   (map (fn [m]
+                          (dissoc m :element/position)))
+                   (map (juxt #(-> % :figma/parameters (select-keys [:state]))
+                              identity)))
+             dropdown-items)}]})
+
+  (-> schematic-dropdown-item-component
+      com.phronemophobic.membrane.schematic2/export-component
+      eval)
+
+  (do
+    (defui figma-dropdown-item-with-hover [{:keys [text state hover?]
+                                            :or {state :default}}]
+      (ui/on
+       :mouse-down
+       (fn [_]
+         (prn "$hover?" $hover?)
+         [[::select text]
+          [:set $hover? false]])
+       (ui/on
+        :set
+        (fn [$ref value]
+          (prn "$ref" $ref)
+          [[:set $ref value]])
+        (basic/on-hover {:hover? hover?
+                         :body
+                         (figma-dropdown-item
+                          {:state (if hover?
+                                    :hover
+                                    state)
+                           :text text})}))))
+
+    (defui dropdown-item-app [{:keys []}]
+      (let [all-dropdown-items
+            (for [{:keys [state]}
+                  (->> (search/some schematic-dropdown-item-component
+                                    :flow-control.case/clauses)
+                       keys
+                       (remove #(= (:state %) :hover))
+                       distinct)]
+              (figma-dropdown-item-with-hover
+               {:state state
+                :hover? (get extra [:hover? state])
+                :text state}))]
+        (ui/table-layout
+         (partition-all
+          (int (Math/sqrt (count all-dropdown-items)))
+          all-dropdown-items)
+         8 8)))
+
+    (skia/run
+      (membrane.component/make-app #'dropdown-item-app))
+
+
+    ,)
+
+
   ;; dropdown
   (def dropdown-view
     (some #(when (and (= "CANVAS" (:type %))
                       (= "Dropdown menu " (:name %)))
-                              %)
-                           views))
+             %)
+          views))
 
   (def dropdowns
     (->> (search/keep-all
@@ -1640,11 +1776,12 @@
   (def schematic-dropdown-component
     {:component/defaults {:open false
                           :state :default
+                          :selected nil
                           :options ["a" "b" "c"]
                           :text "Options"
                           :loading false}
      :element/type :element/component
-     :element/name "figma-dropdown"
+     :element/name "figma-dropdown-raw"
      :element/children
      [{:element/type :flow-control/case
        :flow-control.case/expression '{:open open
@@ -1672,16 +1809,13 @@
                                      (z/edit (fn [x]
                                                (-> x
                                                    (assoc :element/for-bindings '[option options])
-                                                   (update :element/children
-                                                           (fn [xs]
-                                                             (let [zoption (-> (first xs)
-                                                                               (search/find #(= "Option"
-                                                                                                (:element/text %))))]
-                                                               (if zoption
-                                                                 [(-> zoption
-                                                                      (z/edit assoc :element/text 'option)
-                                                                      z/root)]
-                                                                 xs))))
+                                                   (assoc :element/children
+                                                          [{:element/type :element/instance
+                                                            :instance/args {:text 'option
+                                                                            :state '(if (= selected $option)
+                                                                                      :selected
+                                                                                      :default)}
+                                                            :instance/fn `figma-dropdown-item-with-hover}])
                                                    (assoc :element/strokes [#:element{:color [0.933
                                                                                               0.933
                                                                                               0.933
@@ -1696,6 +1830,41 @@
   (-> schematic-dropdown-component
       com.phronemophobic.membrane.schematic2/export-component
       eval)
+
+  (defui figma-dropdown [{:keys [text open selected options state hover?]}]
+    (let [state (or state :default)
+          body
+          (figma-dropdown-raw {:open open
+                               :text (or selected text)
+                               :selected selected
+                               :options options
+                               :state (if (and hover?
+                                               (not open))
+                                        :hover
+                                        state)})]
+      (ui/wrap-on
+       :mouse-down
+       (fn [handler pos]
+         (conj (handler pos)
+               [:update $open not]))
+       (ui/on
+        ::select
+        (fn [option]
+          [[:set $selected option]])
+        (basic/on-hover
+         {:hover? hover?
+          :body body})))))
+
+  (defui dropdown-test [{:keys [open state]}]
+    (figma-dropdown {:open open
+                     :state state
+                     :options ["a" "b" "c"]
+                     :text "hello"}))
+
+  (defonce dropdown-state (atom {:open false
+                                 :state :default}))
+  (backend/run (membrane.component/make-app #'dropdown-test dropdown-state))
+  (swap! dropdown-state update :open not)
 
 
   ,)
