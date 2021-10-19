@@ -520,6 +520,7 @@
                    end [(- x2 x) (- y2 y)]]
                #:element{:type :element/shape
                          :position [x y]
+                         :strokes [{}]
                          :path [start end]})]
             [:delete $temp-pos]
             [:delete $mpos]]))
