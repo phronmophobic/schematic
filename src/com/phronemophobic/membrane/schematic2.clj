@@ -1445,6 +1445,11 @@
 
 (defonce editor-state (atom initial-state))
 
+(defn lookup-elem [eid]
+  (->tree (:store @editor-state)
+          eid))
+
+
 (defn restart-editor []
   (reset! editor-state initial-state)
   (backend/run (membrane.component/make-app  #'editor editor-state))
@@ -1803,17 +1808,20 @@
   (binding [*passes* export-passes]
     (compile component)))
 
-(defn export-store [store]
-  (let [comps
-        (for [eid (-> store :db keys)
-              :let [elem (-> (->tree store eid)
-                             (dissoc :element/position))]
-              :when (= :element/component
-                       (:element/type elem))]
-          (binding [*passes* export-passes]
-            (compile elem)))]
-    `(do
-       ~@comps)))
+(defn export-store
+  ([]
+   (export-store (:store @editor-state)))
+  ([store]
+   (let [comps
+         (for [eid (-> store :db keys)
+               :let [elem (-> (->tree store eid)
+                              (dissoc :element/position))]
+               :when (= :element/component
+                        (:element/type elem))]
+           (binding [*passes* export-passes]
+             (compile elem)))]
+     `(do
+        ~@comps))))
 
 
 
