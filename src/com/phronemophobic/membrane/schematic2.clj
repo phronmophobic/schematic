@@ -740,6 +740,16 @@
      (ui/translate
       (nth scroll-offset 0) (nth scroll-offset 1)
       (ui/on
+       :key-press
+       (fn [c]
+         (when-let [offset (case c
+                             :left [-1 0]
+                             :right [1 0]
+                             :up [0 -1]
+                             :down [0 1]
+                             ;; else
+                             nil)]
+           [[::move-selection $store selection offset]]))
        :mouse-down
        (fn [pos]
          [[::select-one $selection store pos]
