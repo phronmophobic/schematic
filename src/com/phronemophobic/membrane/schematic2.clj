@@ -1329,6 +1329,7 @@
     m))
 
 (let [tools {:line line-tool
+             :rect rect-tool
              :pan pan-tool
              ;; :instance instance-tool
              :textarea textarea-tool
