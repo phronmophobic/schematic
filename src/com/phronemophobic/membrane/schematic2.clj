@@ -181,6 +181,18 @@
 (s/def :element/element (s/multi-spec element-type :element/type))
 
 
+;; todo example
+(s/def :todo/description string?)
+(s/def :todo/complete? boolean?)
+(s/def ::todo (s/keys :req-un [:todo/description :todo/complete?]))
+(s/def :ui/todo-item (s/keys :req-un [::todo]))
+
+(s/def ::todos (s/coll-of ::todo :into []))
+(s/def :ui/todo-list (s/keys :req-un [::todos]))
+
+(s/def ::next-todo string?)
+(s/def :ui/todo-app (s/keys :req-un [::todos ::next-todo]))
+
 
 
 
