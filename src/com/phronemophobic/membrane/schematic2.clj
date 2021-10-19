@@ -1059,7 +1059,16 @@
                             #(t (merge %
                                        {:elem
                                         #:element{:instance/component {:element/id (:element/id obj)}
-                                                  :type :element/instance}}))]]))})))
+                                                  :type :element/instance}}))]]))}))
+      (when (and (= :element/component (:element/type obj))
+                 (:component/args-spec obj))
+        (basic/button {:text "regen"
+                       :on-click
+                       (fn []
+                         [[:update $obj
+                           (fn [obj]
+                             (assoc obj :component/defaults
+                                    (gen/generate (s/gen (:component/args-spec obj)))))]])})))
      (ui/label (with-out-str
                  (clojure.pprint/pprint
                   (dissoc obj
