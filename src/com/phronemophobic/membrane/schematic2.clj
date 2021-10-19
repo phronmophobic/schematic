@@ -1382,7 +1382,9 @@
          (on
           ::select
           (fn [eid]
-            [[:set $selection [eid]]])
+            (if shift-down?
+              [[:update $selection conj eid]]
+              [[:set $selection [eid]]]))
           (element-tree {:store store
                          :selection selection}))
          (ui/wrap-on
