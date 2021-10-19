@@ -1424,7 +1424,8 @@
 
 (defn restart-editor []
   (reset! editor-state initial-state)
-  (backend/run (membrane.component/make-app  #'editor editor-state)))
+  (backend/run (membrane.component/make-app  #'editor editor-state))
+  ,)
 
 (comment
 
@@ -1635,30 +1636,34 @@
                          (let [fill-body# (gensym "fill-body-")]
                            `(let [~fill-body# ~(if (:element/text m)
                                                  (compile-text nil m)
-                                                 (if-let [fill-paths (seq (:element/fill-path m))]
-                                                   (mapv (fn [commands]
-                                                           `(svg/svg-path ~commands
-                                                                          ~(or (:svg/origin m) [0 0])
-                                                                          ~(or (:svg/bounds m) [0 0])))
-                                                         fill-paths)
-                                                   (if corner-radius
-                                                     `(ui/rounded-rectangle ~width# ~height# ~corner-radius)
-                                                     `(ui/rectangle ~width# ~height#))))]
+                                                 (if (:element/path m)
+                                                   (compile-path nil m)
+                                                   (if-let [fill-paths (seq (:element/fill-path m))]
+                                                     (mapv (fn [commands]
+                                                             `(svg/svg-path ~commands
+                                                                            ~(or (:svg/origin m) [0 0])
+                                                                            ~(or (:svg/bounds m) [0 0])))
+                                                           fill-paths)
+                                                     (if corner-radius
+                                                       `(ui/rounded-rectangle ~width# ~height# ~corner-radius)
+                                                       `(ui/rectangle ~width# ~height#)))))]
                               (ui/with-style :membrane.ui/style-fill
                                 ~(mapv #(with-color % fill-body#) fills)))))
             stroke-elems (when (seq strokes)
                            (let [stroke-body# (gensym "stroke-body-")]
                              `(let [~stroke-body# ~(if (:element/text m)
                                                      (compile-text m)
-                                                     (if-let [stroke-paths (seq (:element/stroke-path m))]
-                                                       (mapv (fn [commands]
-                                                               `(svg/svg-path ~commands
-                                                                          ~(or (:svg/origin m) [0 0])
-                                                                          ~(or (:svg/bounds m) [0 0])))
-                                                             stroke-paths)
-                                                       (if corner-radius
-                                                         `(ui/rounded-rectangle ~width# ~height# ~corner-radius)
-                                                         `(ui/rectangle ~width# ~height#))))
+                                                     (if (:element/path m)
+                                                       (compile-path nil m)
+                                                       (if-let [stroke-paths (seq (:element/stroke-path m))]
+                                                         (mapv (fn [commands]
+                                                                 `(svg/svg-path ~commands
+                                                                                ~(or (:svg/origin m) [0 0])
+                                                                                ~(or (:svg/bounds m) [0 0])))
+                                                               stroke-paths)
+                                                         (if corner-radius
+                                                           `(ui/rounded-rectangle ~width# ~height# ~corner-radius)
+                                                           `(ui/rectangle ~width# ~height#)))))
 
                                     ~stroke-body# ~(if-let [stroke-weight (:element/stroke-weight m)]
                                                      `(ui/with-stroke-width ~stroke-weight
@@ -1691,7 +1696,7 @@
    compile-hidden
    compile-children
 
-   compile-path
+   ;; compile-path
    ;; compile-style
    ;; compile-stroke-color
    
@@ -1745,7 +1750,7 @@
    compile-hidden
    compile-children
 
-   compile-path
+   ;; compile-path
    ;; compile-style
    ;; compile-stroke-color
    
