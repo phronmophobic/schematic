@@ -910,7 +910,6 @@
                (fn [store]
                  (let [
                        
-                       _ (prn "removing" (map :element/id children))
                        store (reduce #(delete-elem %1 %2)
                                      store
                                      (map :element/id children))
@@ -1082,7 +1081,6 @@
    ::basic/request-focus
    (fn []
      (let [time (.getTime ^java.util.Date (java.util.Date.))]
-       (prn $focus)
        (if (and last-click
                 (< (- time last-click)
                    500))
@@ -1128,7 +1126,6 @@
               (fn [$x]
                 [[:update $expanded
                   (fn [m]
-                    (prn "update expansion?" m)
                     (if (get m eid)
                       (dissoc m eid)
                       (assoc m eid {})))]])
@@ -1186,7 +1183,6 @@
 
 
 (defeffect ::reparent-elem [$store drag-source drag-destination]
-  (prn "reparenting " drag-source drag-destination)
   (dispatch! :update
              $store
              (fn [store]
