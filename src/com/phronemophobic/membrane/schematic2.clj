@@ -1029,6 +1029,7 @@
                                        (let [v (try
                                                  (clojure.edn/read-string s)
                                                  (catch Exception e
+                                                   (prn e)
                                                    ::error))]
                                          (if (= v ::error)
                                            obj
