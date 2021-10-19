@@ -536,6 +536,57 @@
       ))
     ))
 
+(defui rect-tool [{:keys [store scroll-offset scroll-bounds]}]
+  (let [mpos (get extra :mpos)
+        temp-pos (get extra :temp-pos)]
+    (ui/scissor-view
+     [0 0]
+     scroll-bounds
+     (ui/translate
+      (nth scroll-offset 0) (nth scroll-offset 1)
+      (ui/on
+       :mouse-down
+       (fn [[mx my :as pos]]
+         [[:set $mpos pos]
+          [:delete $temp-pos nil]])
+       :mouse-move
+       (fn [pos]
+         (when mpos
+           [[:set $temp-pos pos]]))
+       :mouse-up
+       (fn [pos]
+         (when mpos
+           [[::add-element $store
+             (let [[x1 y1] (mapv int pos)
+                   [x2 y2] (mapv int mpos)
+                   x (min x1 x2)
+                   y (min y1 y2)
+                   width (Math/abs (- x2 x1))
+                   height (Math/abs (- y2 y1))]
+               #:element{:type :element/shape
+                         :position [x y]
+                         :strokes [{}]
+                         :path [[0 0] [0 height]
+                                [width height] [width 0]
+                                [0 0]]})]
+            [:delete $temp-pos]
+            [:delete $mpos]]))
+       [(ui/with-style :membrane.ui/style-stroke
+          (ui/rectangle (nth scroll-bounds 0)
+                        (nth scroll-bounds 1)))
+        (ui/no-events
+         (render-store store))
+        (when (and mpos temp-pos)
+          (ui/with-style :membrane.ui/style-stroke
+            (let [[x1 y1] mpos
+                  [x2 y2] temp-pos]
+             (ui/translate (min x1 x2) (min y1 y2)
+                           (ui/rectangle (Math/abs (- x2 x1))
+                                         (Math/abs (- y2 y1)))))))]
+       )
+      ))
+    ))
+
 (defui pan-tool [{:keys [store scroll-offset scroll-bounds]}]
   (sv/scrollview {:offset scroll-offset
                   :scroll-bounds scroll-bounds
