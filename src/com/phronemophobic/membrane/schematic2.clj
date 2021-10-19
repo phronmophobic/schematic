@@ -767,9 +767,7 @@
                    [(- (nth temp-pos 0)
                        (nth mpos 0))
                     (- (nth temp-pos 1)
-                       (nth mpos 1))]]
-                  [:set $selection nil]
-                  ]))
+                       (nth mpos 1))]]]))
          )
        [(ui/with-style :membrane.ui/style-stroke
           (ui/rectangle (nth scroll-bounds 0)
