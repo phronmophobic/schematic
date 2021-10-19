@@ -366,13 +366,23 @@
                      [es child]
                      [(update es :next-eid inc)
                       (assoc child :element/id (:next-eid es))])
+
         child (if (:element/name child)
                 child
-                (assoc child
-                       :element/name
-                       (str (name (:element/type child))
-                            "-"
-                            (:element/id child))))]
+                (let [ename (if-let [fsym (:instance/fn child)]
+                              (str (name fsym)
+                                   "-"
+                                   (:element/id child))
+                              (if-let [comp (:instance/component child)]
+                                (let [component-entity (->tree es (:element/id comp))]
+                                  (str (:element/name component-entity)
+                                       "-"
+                                       (:element/id child)))
+                                (str (name (:element/type child))
+                                     "-"
+                                     (:element/id child))))]
+                 (assoc child
+                        :element/name ename)))]
    (update es
            :db
            (fn [db]
