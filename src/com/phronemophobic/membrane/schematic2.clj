@@ -810,6 +810,15 @@
                                      specter/NONE
                                      root))))))
 
+
+(defeffect ::delete-selection [$store selection]
+  (dispatch! :update $store
+             (fn [store]
+               (reduce (fn [store eid]
+                         (delete-elem store eid))
+                       store
+                       selection))))
+
 (defui delete-tool [{:keys [store selection scroll-bounds scroll-offset]}]
   (ui/scissor-view
    [0 0]
@@ -1374,6 +1383,10 @@
                         (cons [:set $shift-down? new-shift-down?]
                               (handler key scancode action mods))
                         (handler key scancode action mods))))
+       :key-press (fn [handler c]
+                    (if (= :delete c)
+                      [[::delete-selection $store selection]]
+                      (handler c)))
        
        (vertical-layout
         (toolbar {:selected tool
