@@ -305,7 +305,8 @@
   (append-child [es eid child])
   (edit-elem [es eid f])
   (delete-elem [es eid])
-  (->tree [es eid]))
+  (->tree [es eid])
+  (get-elem-shallow [es eid]))
 
 
 (def schema
@@ -444,8 +445,10 @@
     (delete-elem* es eid))
   
   (->tree [es eid]
-    (->tree* es eid)
-    ))
+    (->tree* es eid))
+
+  (get-elem-shallow [es eid]
+    (get-in es [:db eid])))
 
 (defn element-store []
   (-> {}
