@@ -624,24 +624,74 @@
 
 
 
+
+(defeffect ::mouse-down-text-tool [$store $edit-text-eid $edit-text $focus [x y :as pos]]
+  (let [store (dispatch! :get $store)
+        root (->tree-memo store ::root)
+        [dist eid]
+        (reduce
+         (fn [[dist id :as old] {eid :element/id :as elem}]
+           (if-not (= :element/label (:element/type elem))
+             old
+             (let [[ex ey] (get elem :element/position [0 0])
+
+                   xdist (- ex x)
+                   ydist (- ey y)
+                   edist (+ (* xdist xdist)
+                            (* ydist ydist))]
+               (if (< edist dist)
+                 [edist eid]
+                 old))))
+         [Double/MAX_VALUE nil]
+         (:element/children root))]
+    (if (< dist (* 15 15))
+      (let [elem (get-elem-shallow store eid)]
+        (dispatch! :set $edit-text-eid eid)
+        (dispatch! :set $edit-text (:element/text elem))
+        (dispatch! :set $focus $edit-text))
+      (if (dispatch! :get $edit-text-eid)
+        (let [edit-text-eid (dispatch! :get $edit-text-eid)
+              edit-text (dispatch! :get $edit-text)]
+          (dispatch! :set $edit-text-eid nil)
+          (dispatch! :update $store
+                     (fn [store]
+                       (edit-elem store edit-text-eid
+                                  #(assoc % :element/text edit-text)))))
+        (do
+          (dispatch! :set $edit-text-eid nil)
+          (dispatch! ::add-element $store
+                     #:element{:position pos
+                               :type :element/label,
+                               :fills [{}]
+                               :text "asfd"}))))))
+
 (defui text-tool [{:keys [store scroll-bounds scroll-offset]}]
-  (ui/scissor-view
-   [0 0]
-   [800 800]
-   (ui/translate
-    (nth scroll-offset 0) (nth scroll-offset 1)
-    (ui/on
-     :mouse-down
-     (fn [[mx my :as pos]]
-       [[::add-element $store
-         #:element{:position pos
-                   :type :element/label,
-                   :fills [{}]
-                   :text "asfd"}]])
-     [(ui/with-style :membrane.ui/style-stroke
-        (ui/rectangle 800 800))
-      (ui/no-events
-       (render-store store))]))))
+  (let [focus (get context :focus)
+        edit-text-eid (get extra ::edit-text-eid)
+        temp-text (get extra [::edit-text-eid :text])]
+    (ui/vertical-layout
+     (ui/label (str (pr-str $focus) " " (pr-str context)))
+     (ui/scissor-view
+      [0 0]
+      [800 800]
+      (ui/translate
+       (nth scroll-offset 0) (nth scroll-offset 1)
+       (ui/on
+        :mouse-down
+        (fn [[mx my :as pos]]
+          [[::mouse-down-text-tool $store $edit-text-eid $temp-text $focus pos]])
+        [(ui/with-style :membrane.ui/style-stroke
+           (ui/rectangle 800 800))
+         (ui/no-events
+          (render-store
+           (if edit-text-eid
+             (delete-elem store edit-text-eid)
+             store)))
+         (when edit-text-eid
+           (let [text-elem (get-elem-shallow store edit-text-eid)
+                 [x y] (:element/position text-elem)]
+             (ui/translate x y
+                           (basic/textarea {:text temp-text}))))]))))))
 
 
 (defui instance-tool [{:keys [store elem scroll-bounds scroll-offset]}]
