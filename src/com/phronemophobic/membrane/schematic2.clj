@@ -669,29 +669,27 @@
   (let [focus (get context :focus)
         edit-text-eid (get extra ::edit-text-eid)
         temp-text (get extra [::edit-text-eid :text])]
-    (ui/vertical-layout
-     (ui/label (str (pr-str $focus) " " (pr-str context)))
-     (ui/scissor-view
-      [0 0]
-      [800 800]
-      (ui/translate
-       (nth scroll-offset 0) (nth scroll-offset 1)
-       (ui/on
-        :mouse-down
-        (fn [[mx my :as pos]]
-          [[::mouse-down-text-tool $store $edit-text-eid $temp-text $focus pos]])
-        [(ui/with-style :membrane.ui/style-stroke
-           (ui/rectangle 800 800))
-         (ui/no-events
-          (render-store
-           (if edit-text-eid
-             (delete-elem store edit-text-eid)
-             store)))
-         (when edit-text-eid
-           (let [text-elem (get-elem-shallow store edit-text-eid)
-                 [x y] (:element/position text-elem)]
-             (ui/translate x y
-                           (basic/textarea {:text temp-text}))))]))))))
+    (ui/scissor-view
+     [0 0]
+     [800 800]
+     (ui/translate
+      (nth scroll-offset 0) (nth scroll-offset 1)
+      (ui/on
+       :mouse-down
+       (fn [[mx my :as pos]]
+         [[::mouse-down-text-tool $store $edit-text-eid $temp-text $focus pos]])
+       [(ui/with-style :membrane.ui/style-stroke
+          (ui/rectangle 800 800))
+        (ui/no-events
+         (render-store
+          (if edit-text-eid
+            (delete-elem store edit-text-eid)
+            store)))
+        (when edit-text-eid
+          (let [text-elem (get-elem-shallow store edit-text-eid)
+                [x y] (:element/position text-elem)]
+            (ui/translate x y
+                          (basic/textarea {:text temp-text}))))])))))
 
 
 (defui instance-tool [{:keys [store elem scroll-bounds scroll-offset]}]
