@@ -1628,9 +1628,11 @@
   )
 
 (defn compile-position [body m]
-  (when-let [position (:element/position m)]
-    `(let [pos# ~position]
-       (ui/translate (nth pos# 0) (nth pos# 1)
+  (let [x (:element/x m)
+        y (:element/y m)]
+    (when (or x y)
+      (assert (and x y) (str "Partially specified position " (pr-str m)))
+      `(ui/translate ~x ~y
                      ~body))))
 
 (defn compile-transform [body m]
