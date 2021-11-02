@@ -252,8 +252,41 @@
             :id 106,
             :type :element/group})
 
+(def test-flex
+  #:element{
+            :children
+            [#:element{:x 3
+                       :y 1
+                       :id 193,
+                       :fills [{}]
+                       :type :element/label
+                       :text '(str "counter: " y)}
+             #:element{:x 3
+                       :y 1
+                       :id 193,
+                       :strokes [{}]
+                       :path '[[0 0]
+                               [20 (* y 20)]]
+                       :type :element/shape
+                       }
+             ],
+            :element/for-bindings '[y (range 5)]
+            :layout {;;:flex/alignment :flex.align/center
+                     ;; :flex/justify-content :flex.justify-content/space-evenly
+                     ;; :flex/column-gap 10
+                     :flex/direction :flex.direction/column}
+            :x 50
+            :y 50
+            :height 500
             :id 106,
             :type :element/group})
+
+
+(comment
+  (backend/run (constantly
+                (eval (compile test-flex))))
+  ,)
+
 
 (def test-counter
   #:element{
@@ -1604,27 +1637,127 @@
       (for ~for-bindings
         ~body))))
 
+(defn compile-flex-layout [body m]
+  (let [{:flex/keys [direction
+                     wrap
+                     justify-content
+                     align-items
+                     row-gap
+                     column-gap]
+         :as layout}
+        (:element/layout m)
+
+        direction (get layout :flex/direction :flex.direction/row)
+        wrap (get layout :flex/wrap :flex.wrap/nowrap)
+
+        [ui-size get-size ui-cross-size get-cross-size get-gap make-spacer main-layout align ->alignment]
+        (if (= direction :flex.direction/row)
+          [`ui/width :element/width `ui/height :element/height :flex/row-gap #(list `ui/spacer % 0) `ui/horizontal-layout `ui/align-row
+           {:flex.align/start :top
+            :flex.align/end :bottom
+            :flex.align/center :center}]
+          [`ui/height :element/height `ui/width :element/width :flex/column-gap #(list `ui/spacer 0 %) `ui/vertical-layout `ui/align-column {:flex.align/start :left
+                                                                                                                                             :flex.align/end :right
+                                                                                                                                             :flex.align/center :center}])
+
+        fixed-size? (some? (get-size m))]
+    (if fixed-size?
+      (let [ ;; only justify for fixed sizes
+            gap (get-gap layout)
+            justification (:flex/justify-content layout)
+
+            body (if-let [gap (get-gap layout)]
+                   (do
+                     (assert (not (#{:flex.justify-content/space-around
+                                     :flex.justify-content/space-between
+                                     :flex.justify-content/space-evenly} justification))
+                             (str get-gap "  Doesn't make sense with " justification))
+                     `(interpose ~(make-spacer gap)
+                                 ~body))
+                   body)
+            body (if-let [alignment (:flex/alignment layout)]
+                   `(~align ~(->alignment alignment) ~(get-cross-size m) (vec ~body))
+                   body)
+            body (if-let [justification (get layout :flex/justify-content
+                                             :flex.justify-content/start)]
+                   (case justification
+                     :flex.justify-content/start
+                     `(apply ~main-layout ~body)
+
+                     :flex.justify-content/end
+                     (let [body `(apply ~main-layout ~body)
+                           body# (gensym "body")
+                           offset `(- ~(get-size m)
+                                      (~ui-size ~body#))]
+                       `(let [~body# ~body]
+                          (ui/translate ~@(if (= direction :flex.direction/row)
+                                            [offset 0]
+                                            [0 offset])
+                                        !body#)))
+
+                     :flex.justify-content/center
+                     (let [body `(apply ~main-layout ~body)
+                           body# (gensym "body")
+                           offset `(/ (- ~(get-size m)
+                                         (~ui-size ~body#))
+                                      2)]
+                       `(let [~body# ~body]
+                          (ui/translate ~@(if (= direction :flex.direction/row)
+                                            [offset 0]
+                                            [0 offset])
+                                        ~body#)))
+
+                     (:flex.justify-content/space-between
+                      :flex.justify-content/space-around
+                      :flex.justify-content/space-evenly)
+                     `(let [body# ~body]
+                        (~(if (= direction :flex.direction/row)
+                            `ui/justify-row-content
+                            `ui/justify-column-content)
+
+                         ~(get {:flex.justify-content/space-between :space-between
+                                :flex.justify-content/space-around :space-around
+                                :flex.justify-content/space-evenly :space-evenly}
+                               justification)
+                         ~(get-size m)
+                         body#)))
+                   ;; else, no justification
+                   body)]
+        body)
+      (let [;; justify doesn't make sense for non-fixed-width
+            ;; but gaps do.
+            gap (get-gap layout)
+            body (if gap
+                   `(interpose ~(make-spacer gap)
+                               ~body)
+                   body)
+            body `(apply ~main-layout ~body)
+            body (if-let [alignment (:flex/alignment layout)]
+                   `(~align ~(->alignment (:flex/alignment layout)) ~(get-cross-size m) ~body)
+                   body)]
+        body)))
+  )
+
 (defn compile-layout [body m]
-  (let [layout (:element/layout m)]
-    (case layout
-      :vertical
-      (let [spacing (:element/layout-spacing m)]
-        (if (and spacing (pos? spacing))
-          `(apply vertical-layout (interpose (ui/spacer 0 ~spacing)
-                                             ~body))
-          `(apply vertical-layout ~body)))
-      
-      :horizontal
-      (let [spacing (:element/layout-spacing m)]
-        (if (and spacing (pos? spacing))
-          `(apply horizontal-layout (interpose (ui/spacer ~spacing 0)
+  (when-let [layout (:element/layout m)]
+    (if (map? layout)
+      (compile-flex-layout body m)
+      (case layout
+        :vertical
+        (let [spacing (:element/layout-spacing m)]
+          (if (and spacing (pos? spacing))
+            `(apply vertical-layout (interpose (ui/spacer 0 ~spacing)
                                                ~body))
-          `(apply horizontal-layout ~body)))
+            `(apply vertical-layout ~body)))
+        :horizontal
+        (let [spacing (:element/layout-spacing m)]
+          (if (and spacing (pos? spacing))
+            `(apply horizontal-layout (interpose (ui/spacer ~spacing 0)
+                                                 ~body))
+            `(apply horizontal-layout ~body)))
 
-      nil body
-
-      ;;else
-      (throw (Exception. (str "Unknown layout " layout)))))
+        ;;else
+        (throw (Exception. (str "Unknown layout " layout))))))
   )
 
 (defn compile-position [body m]
