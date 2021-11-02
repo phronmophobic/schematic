@@ -34,7 +34,7 @@
 (s/def :element/id pos-int?)
 
 (s/def :geom/point (s/tuple number? number?))
-(s/def :geom/position :geom/point)
+;; (s/def :geom/position :geom/point)
 (s/def :geom/path (s/and (s/coll-of :geom/position
                                     :into [])
                          #(>= (count %) 2)))
@@ -58,8 +58,10 @@
                           :color4d :style/color4d))
 
 (s/def :element/type keyword?)
-(s/def :element/position (s/or :position :geom/position
-                               :relative :geom/relative-position))
+;; (s/def :element/position (s/or :position :geom/position
+;;                                :relative :geom/relative-position))
+(s/def :element/x number?)
+(s/def :element/y number?)
 
 
 (s/def :element/text string?)
@@ -125,7 +127,9 @@
 (defmethod element-type :element/group [_]
   (s/keys :req [:element/id
                 :element/type]
-          :opt [:element/position
+          :opt [;;:element/position
+                :element/x
+                :element/y
                 :element/children
                 :element/hidden
                 :element/layout
@@ -136,7 +140,9 @@
                 :element/text]
           :opt [:element/stroke-color
                 :element/stroke
-                :element/position
+                ;; :element/position
+                :element/x
+                :element/y
                 :element/fill-color
                 :element/stroke-weight
                 :element/hidden]))
@@ -147,7 +153,7 @@
           :opt [:element/stroke-color
                 :element/stroke
                 :element/path
-                :element/position
+                ;; :element/position
                 :element/fill-color
                 :element/stroke-weight
                 :element/hidden]))
@@ -159,7 +165,9 @@
                 :component/args-spec
                 :component/bindings
                 :component/defaults
-                :element/position
+                ;; :element/position
+                :element/x
+                :element/y
                 :element/children
                 :element/hidden
                 :element/layout
@@ -172,7 +180,9 @@
           :opt [;;:component/args
                 ;; :component/bindings
                 :instance/args
-                :element/position
+                ;; :element/position
+                :element/x
+                :element/y
                 :element/hidden
                 :element/layout
                 :element/bounds
@@ -200,11 +210,13 @@
 (def test-elem
   #:element{
             :children
-            [#:element{:position [3.0 1],
+            [#:element{:x 3.0
+                       :y 1
                        :id 193,
                        :type :element/label
                        :text "asfd"}
-             #:element{:position [3.0 1],
+             #:element{:x 3.0
+                       :y 1
                        :id 192,
                        :path [[0 0]
                               [20 20]]
@@ -212,18 +224,21 @@
                        }
              ],
             ;; :layout :none
-            :position [50 50],
+            :x 50
+            :y 50
             :id 106,
             :type :element/group})
 
 (def test-for
   #:element{
             :children
-            [#:element{:position [3.0 1],
+            [#:element{:x 3
+                       :y 1
                        :id 193,
                        :type :element/label
                        :text '(str "counter: " x)}
-             #:element{:position [3.0 1],
+             #:element{:x 3
+                       :y 1
                        :id 193,
                        :path [[0 0]
                               [20 20]]
@@ -232,19 +247,25 @@
              ],
             :element/for-bindings '[x (range 5)]
             ;; :layout :none
-            :position [50 50],
+            :x 50
+            :y 50
+            :id 106,
+            :type :element/group})
+
             :id 106,
             :type :element/group})
 
 (def test-counter
   #:element{
             :children
-            [#:element{:position [3.0 1],
+            [#:element{:x 3
+                       :y 1
                        :id 193,
                        :type :element/label
                        :text 'num}],
             ;; :layout :none
-            :position [50 50],
+            :x 50
+            :y 50
             ;; :component/args {:num 42}
             :component/defaults {:num 42}
             :component/args-spec nat-int?
@@ -260,7 +281,8 @@
 
   #:element{
             ;; :layout :none
-            :position [50 50],
+            :x 50
+            :y 50
             ;; :component/args {:num 42}
             :instance/args {:text "hello"}
             :instance/fn `basic/textarea
@@ -274,7 +296,8 @@
             [(assoc test-textarea
                     :instance/args {:text 'num})],
             ;; :layout :none
-            :position [50 50],
+            :x 50
+            :y 50
             ;; :component/args {:num 42}
             :component/defaults {:num 42}
             :component/args-spec nat-int?
@@ -286,13 +309,15 @@
 
 (def test-instance2
   #:element{
-            :instance/component #:element{:position [3.0 1],
+            :instance/component #:element{:x 3
+                                          :y 1
                                           :id 193,
                                           :path [[0 0]
                                                  [20 20]]
                                           :type :element/shape
                                           }
-            :position [50 50]
+            :x 50
+            :y 50
             :id 106,
             :type :element/instance}
   )
@@ -544,7 +569,8 @@
                    start [(- x1 x) (- y1 y)]
                    end [(- x2 x) (- y2 y)]]
                #:element{:type :element/shape
-                         :position [x y]
+                         :x x
+                         :y y
                          :strokes [{}]
                          :path [start end]})]
             [:delete $temp-pos]
@@ -589,7 +615,8 @@
                    width (Math/abs (- x2 x1))
                    height (Math/abs (- y2 y1))]
                #:element{:type :element/shape
-                         :position [x y]
+                         :x x
+                         :y y
                          :strokes [{}]
                          :path [[0 0] [0 height]
                                 [width height] [width 0]
@@ -633,7 +660,9 @@
          (fn [[dist id :as old] {eid :element/id :as elem}]
            (if-not (= :element/label (:element/type elem))
              old
-             (let [[ex ey] (get elem :element/position [0 0])
+             (let [;;[ex ey] (get elem :element/position [0 0])
+                   ex (get elem :element/x 0)
+                   ey (get elem :element/y 0)
 
                    xdist (- ex x)
                    ydist (- ey y)
@@ -660,7 +689,8 @@
         (do
           (dispatch! :set $edit-text-eid nil)
           (dispatch! ::add-element $store
-                     #:element{:position pos
+                     #:element{:x x
+                               :y y
                                :type :element/label,
                                :fills [{}]
                                :text "asfd"}))))))
@@ -687,7 +717,10 @@
             store)))
         (when edit-text-eid
           (let [text-elem (get-elem-shallow store edit-text-eid)
-                [x y] (:element/position text-elem)]
+                x (:element/x text-elem)
+                y (:element/y text-elem)
+                ;;[x y] (:element/position text-elem)
+                ]
             (ui/translate x y
                           (basic/textarea {:text temp-text}))))])))))
 
@@ -702,7 +735,10 @@
      :mouse-down
      (fn [[mx my :as pos]]
        [[::add-element $store
-         (assoc elem :element/position (mapv int pos))]])
+         ;;(assoc elem :element/position (mapv int pos))
+         (assoc elem
+                :element/x (int mx)
+                :element/y (int my))]])
 
      [(ui/with-style :membrane.ui/style-stroke
         (ui/rectangle (nth scroll-bounds 0)
@@ -715,7 +751,9 @@
         [dist eid]
         (reduce
          (fn [[dist id :as old] {eid :element/id :as elem}]
-           (let [[ex ey] (get elem :element/position [0 0])
+           (let [;;[ex ey] (get elem :element/position [0 0])
+                 ex (get elem :element/x 0)
+                 ey (get elem :element/y 0)
 
                  xdist (- ex x)
                  ydist (- ey y)
@@ -736,7 +774,9 @@
         [dist eid]
         (reduce
          (fn [[dist id :as old] {eid :element/id :as elem}]
-           (let [[ex ey] (get elem :element/position [0 0])
+           (let [;; [ex ey] (get elem :element/position [0 0])
+                 ex (get elem :element/x 0)
+                 ey (get elem :element/y 0)
 
                  xdist (- ex x)
                  ydist (- ey y)
@@ -756,7 +796,7 @@
 
 (def +zero (fnil + 0))
 
-(defeffect ::move-selection [$store selection offset]
+(defeffect ::move-selection [$store selection [ox oy]]
   (let [selected? (set selection)]
     (dispatch! :update
                $store
@@ -765,10 +805,9 @@
                   (fn [es eid]
                     (edit-elem es eid
                                (fn [elem]
-                                 (update elem :element/position
-                                         (fn [[x y]]
-                                           [(int (+zero x (nth offset 0)))
-                                            (int (+zero y (nth offset 1)))])))))
+                                 (-> elem
+                                     (update :element/x #(int (+zero % ox)))
+                                     (update :element/y #(int (+zero % oy)))))))
                   store
                   selection)))
     #_(dispatch! :update
@@ -798,12 +837,14 @@
                           (specter/transform [:element/children
                                               specter/ALL
                                               (fn [x] (selected? (:element/id x)))
-                                              :element/position]
-                                             (fn [[x y]]
-                                               [(int (+zero x (- (nth temp-pos 0)
-                                                             (nth mpos 0))))
-                                                (int (+zero y (- (nth temp-pos 1)
-                                                             (nth mpos 1))))])
+                                              ;;:element/position
+                                              ]
+                                             (fn [elem]
+                                               (-> elem
+                                                   (update :element/x #(int (+zero % (- (nth temp-pos 0)
+                                                                                        (nth mpos 0)))))
+                                                   (update :element/y #(int (+zero % (- (nth temp-pos 1)
+                                                                                        (nth mpos 1)))))))
                                              root))
                         root)
         body (render-memo temp-elements)]
@@ -858,7 +899,8 @@
         [dist eid]
         (reduce
          (fn [[dist id :as old] {eid :element/id :as elem}]
-           (let [[ex ey] (get elem :element/position [0 0])
+           (let [ex (get elem :element/x 0)
+                 ey (get elem :element/y 0)
 
                  xdist (- ex x)
                  ydist (- ey y)
@@ -921,25 +963,22 @@
                       :element/children
                       (filter #(selected? (:element/id %))))
 
-        cx (transduce (comp (map :element/position)
-                            (map first)
+        cx (transduce (comp (map :element/x)
                             (map #(or % 0)))
                       min
                       Double/POSITIVE_INFINITY
                       children)
-        cy (transduce (comp(map :element/position)
-                           (map second)
-                           (map #(or % 0)))
+        cy (transduce (comp (map :element/y)
+                            (map #(or % 0)))
                       min
                       Double/POSITIVE_INFINITY
                       children)
 
         children (->> children
                       (mapv (fn [elem]
-                              (update elem :element/position
-                                      (fn [pos]
-                                        [(int (- (nth pos 0 0) cx))
-                                         (int (- (nth pos 1 0) cy))])))))]
+                              (-> elem
+                                  (update :element/x #(int (- (or % 0) cx)))
+                                  (update :element/y #(int (- (or % 1) cy)))))))]
     (dispatch! :update $store
                (fn [store]
                  (let [store (reduce #(delete-elem %1 %2)
@@ -948,7 +987,9 @@
                        store (append-child store ::root
                                            #:element{
                                                      :children children
-                                                     :position [cx cy],
+                                                     :x cx
+                                                     :y cy
+                                                     ;; :position [cx cy],
                                                      ;; :component/args {:num 42}
                                                      :component/defaults {}
                                                      ;; :component/args-spec nat-int?
@@ -965,14 +1006,12 @@
                       :element/children
                       (filter #(selected? (:element/id %))))
 
-        cx (transduce (comp (map :element/position)
-                            (map first)
+        cx (transduce (comp (map :element/x)
                             (map #(or % 0)))
                       min
                       Double/POSITIVE_INFINITY
                       children)
-        cy (transduce (comp (map :element/position)
-                            (map second)
+        cy (transduce (comp (map :element/y)
                             (map #(or % 0)))
                       min
                       Double/POSITIVE_INFINITY
@@ -981,10 +1020,9 @@
 
         children (->> children
                       (mapv (fn [elem]
-                              (update elem :element/position
-                                      (fn [pos]
-                                        [(int (- (nth pos 0 0) cx))
-                                         (int (- (nth pos 1 0) cy))])))))
+                              (-> elem
+                                  (update :element/x #(int (- (or % 0) cx)))
+                                  (update :element/y #(int (- (or % 1) cy)))))))
         ]
     (dispatch! :update $store
                (fn [store]
@@ -995,7 +1033,8 @@
                                      (map :element/id children))
                        store (append-child store ::root
                                            #:element{:children children
-                                                     :position [cx cy],
+                                                     :x cx
+                                                     :y cy
                                                      :layout :vertical
                                                      :for-bindings '[x (range 3)]
                                                      :type :element/group})]
@@ -1886,7 +1925,8 @@
    (let [comps
          (for [eid (-> store :db keys)
                :let [elem (-> (->tree store eid)
-                              (dissoc :element/position))]
+                              (dissoc :element/x
+                                      :element/y))]
                :when (= :element/component
                         (:element/type elem))]
            (binding [*passes* export-passes]
