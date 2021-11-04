@@ -271,7 +271,7 @@
                        }
              ],
             :element/for-bindings '[y (range 5)]
-            :layout {;;:flex/alignment :flex.align/center
+            :layout {;;:flex/align :flex.align/center
                      ;; :flex/justify-content :flex.justify-content/space-evenly
                      ;; :flex/column-gap 10
                      :flex/direction :flex.direction/column}
@@ -1675,7 +1675,7 @@
                      `(interpose ~(make-spacer gap)
                                  ~body))
                    body)
-            body (if-let [alignment (:flex/alignment layout)]
+            body (if-let [alignment (:flex/align layout)]
                    `(~align ~(->alignment alignment) ~(get-cross-size m) (vec ~body))
                    body)
             body (if-let [justification (get layout :flex/justify-content
@@ -1732,8 +1732,8 @@
                                ~body)
                    body)
             body `(apply ~main-layout ~body)
-            body (if-let [alignment (:flex/alignment layout)]
-                   `(~align ~(->alignment (:flex/alignment layout)) ~(get-cross-size m) ~body)
+            body (if-let [alignment (:flex/align layout)]
+                   `(~align ~(->alignment (:flex/align layout)) ~(get-cross-size m) ~body)
                    body)]
         body)))
   )
