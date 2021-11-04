@@ -1693,7 +1693,7 @@
                           (ui/translate ~@(if (= direction :flex.direction/row)
                                             [offset 0]
                                             [0 offset])
-                                        !body#)))
+                                        ~body#)))
 
                      :flex.justify-content/center
                      (let [body `(apply ~main-layout ~body)
