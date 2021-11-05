@@ -114,7 +114,9 @@
                              (z/edit assoc :element/text 'text)
                              z/root)]))
                  (map (fn [[k m]]
-                        [k (dissoc m :element/position)])))
+                        [k (dissoc m
+                                   :element/x
+                                   :element/y)])))
            buttons)}]})
 
 (-> schematic-button-component
@@ -128,11 +130,13 @@
                                   {:id (:id m)
                                    :figma m})))
                          (map (preserve-meta figma/->ast))
-                         (map (preserve-meta #(dissoc % :element/position)))
+                         (map (preserve-meta #(dissoc %
+                                                      :element/x
+                                                      :element/y)))
                          (map (preserve-meta s2/compile))
                          (map (preserve-meta eval))
                          (map (fn [view]
-                                (let [[x y :as pos] (-> view meta :figma figma/->ast :element/position)]
+                                (let [{:element/keys [x y]} (-> view meta :figma figma/->ast)]
                                   (ui/translate 
                                    x y
                                    (ui/on
@@ -189,11 +193,11 @@
                               {:id (:id m)
                                :figma m})))
                      (map (preserve-meta figma/->ast))
-                     (map (preserve-meta #(dissoc % :element/position)))
+                     (map (preserve-meta #(dissoc % :element/x :element/y)))
                      (map (preserve-meta s2/compile))
                      (map (preserve-meta eval))
                      (map (fn [view]
-                            (let [[x y :as pos] (-> view meta :figma figma/->ast :element/position)]
+                            (let [{:element/keys [x y]} (-> view meta :figma figma/->ast)]
                               (ui/translate 
                                x y
                                (ui/on
@@ -242,7 +246,7 @@
                              (z/replace ::search/delete) 
                              z/root)]))
                  (map (fn [[k m]]
-                        [k (dissoc m :element/position)])))
+                        [k (dissoc m :element/x :element/y)])))
            checkboxes)}]})
 
 (-> schematic-checkbox-component
@@ -337,11 +341,11 @@
                         {:id (:id m)
                          :figma m})))
                (map (preserve-meta figma/->ast))
-               (map (preserve-meta #(dissoc % :element/position)))
+               (map (preserve-meta #(dissoc % :element/x :element/y)))
                (map (preserve-meta s2/compile))
                (map (preserve-meta eval))
                (map (fn [view]
-                      (let [[x y :as pos] (-> view meta :figma figma/->ast :element/position)]
+                      (let [{:element/keys [x y]} (-> view meta :figma figma/->ast)]
                         (ui/on
                          :mouse-down
                          (fn [_]
@@ -358,10 +362,13 @@
                      5 5)))
 
 (comment
-  (backend/run (membrane.component/make-app #'figma/figma-viewer {:view dropdown-item-table})))
+  (backend/run (membrane.component/make-app #'figma/figma-viewer {:view dropdown-item-table}))
+  ,)
 
 (def schematic-dropdown-item-component
   {:component/defaults {:state :default
+                        :width 360
+                        :height 32
                         :text "Option"}
    :element/type :element/component
    :element/name "figma-dropdown-item"
@@ -381,7 +388,13 @@
                             (z/edit assoc :element/text 'text)
                             z/root)))
                  (map (fn [m]
-                        (dissoc m :element/position)))
+                        (dissoc m
+                                :element/x
+                                :element/y)))
+                 (map (fn [m]
+                        (assoc m
+                               :element/width 'width
+                               :element/height 'height)))
                  (map (juxt #(-> % :figma/parameters (select-keys [:state]))
                             identity)))
            dropdown-items)}]})
@@ -390,24 +403,31 @@
     com.phronemophobic.membrane.schematic2/export-component
     eval)
 
-(defui figma-dropdown-item-with-hover [{:keys [text state hover?]
-                                        :or {state :default}}]
-  (ui/on
-   :mouse-down
-   (fn [_]
-     [[::select text]
-      [:set $hover? false]])
+(defui figma-dropdown-item-with-hover [{:keys [text state hover?
+                                               width height]
+                                        :or {state :default
+                                             width 360
+                                             height 32}}]
+  (let [width (or width 360)
+        height (or height 32)]
    (ui/on
-    :set
-    (fn [$ref value]
-      [[:set $ref value]])
-    (basic/on-hover {:hover? hover?
-                     :body
-                     (figma-dropdown-item
-                      {:state (if hover?
-                                :hover
-                                state)
-                       :text text})}))))
+    :mouse-down
+    (fn [_]
+      [[::select text]
+       [:set $hover? false]])
+    (ui/on
+     :set
+     (fn [$ref value]
+       [[:set $ref value]])
+     (basic/on-hover {:hover? hover?
+                      :body
+                      (figma-dropdown-item
+                       {:state (if hover?
+                                 :hover
+                                 state)
+                        :width width
+                        :height height
+                        :text text})})))))
 
 (defui dropdown-item-app [{:keys []}]
   (let [all-dropdown-items
@@ -419,6 +439,7 @@
                    distinct)]
           (figma-dropdown-item-with-hover
            {:state state
+            :width 200
             :hover? (get extra [:hover? state])
             :text state}))]
     (ui/table-layout
@@ -470,11 +491,11 @@
                                     {:id (:id m)
                                      :figma m})))
                            (map (preserve-meta figma/->ast))
-                           (map (preserve-meta #(dissoc % :element/position)))
+                           (map (preserve-meta #(dissoc % :element/x :element/y)))
                            (map (preserve-meta s2/compile))
                            (map (preserve-meta eval))
                            (map (fn [view]
-                                  (let [[x y :as pos] (-> view meta :figma figma/->ast :element/position)]
+                                  (let [{:element/keys [x y]} (-> view meta :figma figma/->ast)]
                                     (ui/translate 
                                      x y
                                      (ui/on
@@ -549,7 +570,7 @@
                                              ))
                                    z/root))])))
                  (map (fn [[k m]]
-                        [k (dissoc m :element/position)])))
+                        [k (dissoc m :element/x :element/y)])))
            dropdowns)}]})
 
 
@@ -692,11 +713,11 @@
                                      {:id (:id m)
                                       :figma m})))
                             (map (preserve-meta figma/->ast))
-                            (map (preserve-meta #(dissoc % :element/position)))
+                            (map (preserve-meta #(dissoc % :element/x :element/y)))
                             (map (preserve-meta s2/compile))
                             (map (preserve-meta eval))
                             (map (fn [view]
-                                   (let [[x y :as pos] (-> view meta :figma figma/->ast :element/position)]
+                                   (let [{:element/keys [x y]} (-> view meta :figma figma/->ast)]
                                      (ui/translate 
                                       x y
                                       (ui/on
@@ -778,7 +799,7 @@
                            z/root))))
               
               (map (fn [m]
-                     (dissoc m :element/position)))
+                     (dissoc m :element/x :element/y)))
               (map (fn [m]
                      {:component/defaults {:text "text"}
                       :figma/parameters (:figma/parameters m)

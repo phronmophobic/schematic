@@ -95,7 +95,9 @@
 ;; from origin?
 ;; what about negative space?
 ;; this is almost certainly wrong
-(s/def :element/bounds :geom/point)
+;; (s/def :element/bounds :geom/point)
+(s/def :element/width number?)
+(s/def :element/height number?)
 
 (s/def :instance/fn any?)
 (s/def :component/args-spec any?)
@@ -130,10 +132,12 @@
           :opt [;;:element/position
                 :element/x
                 :element/y
+                :element/width
+                :element/height
                 :element/children
                 :element/hidden
                 :element/layout
-                :element/bounds]))
+                ]))
 (defmethod element-type :element/label [_]
   (s/keys :req [:element/id
                 :element/type
@@ -168,10 +172,11 @@
                 ;; :element/position
                 :element/x
                 :element/y
+                :element/width
+                :element/height
                 :element/children
                 :element/hidden
                 :element/layout
-                :element/bounds
                 ]))
 (defmethod element-type :element/instance [_]
   (s/keys :req [:element/id
@@ -183,9 +188,10 @@
                 ;; :element/position
                 :element/x
                 :element/y
+                :element/width
+                :element/height
                 :element/hidden
                 :element/layout
-                :element/bounds
                 ]))
 
 (s/def :element/element (s/multi-spec element-type :element/type))
@@ -1776,9 +1782,10 @@
                         ~body)))
 
 (defn compile-bounds [body m]
-  (when-let [bounds (:element/bounds m)]
-    `(let [bounds# ~bounds]
-       (ui/scissor-view (nth bounds# 0) (nth bounds# 1)
+  (let [{:element/keys [width height]} m]
+    (when (or width height)
+      (assert (and width height))
+      `(ui/scissor-view ~width ~height
                         ~body))))
 
 (defn compile-text [body m]
@@ -1947,9 +1954,10 @@
             body# (gensym "body-")
             ]
         `(let [~body# ~body
-               [~width# ~height#] ~(if-let [bounds (:element/bounds m)]
-                                     bounds
-                                     `(ui/bounds ~body#))]
+               [~width# ~height#] ~(let [{:element/keys [width height]} m]
+                                     (if (and width height)
+                                       [width height]
+                                       `(ui/bounds ~body#)))]
            [~fill-elems
             ~stroke-elems
             ~body#])))))

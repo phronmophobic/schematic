@@ -654,10 +654,12 @@
 
 (defn ast-position [m]
   (if-let [{:keys [x y]} (:relative-bounding-box m)]
-    {:element/position [x y]}
+    {:element/x x
+     :element/y y}
     (let [{:keys [x y]} (:absolute-bounding-box m)]
       (when (and x y)
-        {:element/position [x y]}))))
+        {:element/x x
+         :element/y y}))))
 
 (defn ast-background [m]
   (let [{:keys [strokes
@@ -757,8 +759,10 @@
                    (not= "NONE" (:layout-mode m)))
         layout (if auto?
                  {}
-                 {:element/bounds ((juxt :width :height) (:absolute-bounding-box m))})
-
+                 (let [bounding-box (:absolute-bounding-box m)
+                       {:keys [width height]} bounding-box]
+                   {:element/width width
+                    :element/height height}))
         padding (merge
                  (when-let [p (:padding-left m)]
                    {:padding/left p})
@@ -796,7 +800,7 @@
                                                                  :y local-y))))))
                                             (map ->ast*)
                                             (map #(if auto?
-                                                    (dissoc % :element/position)
+                                                    (dissoc % :element/x :element/y)
                                                     %)))
                                       childs)})
            (ast-background m)
@@ -866,10 +870,11 @@
            {:element/hidden (not (:visible m))})
          (when-let [stroke-weight (:stroke-weight m)]
            {:element/stroke-weight stroke-weight})
-         {:element/bounds ((juxt :width :height) (:absolute-bounding-box m))}
+         (let [{{:keys [width height]} :absolute-bounding-box} m]
+           {:element/width width
+            :element/height height})
          (ast-background m)
-         (ast-position m))
-  )
+         (ast-position m)))
 
 
 
@@ -1280,7 +1285,7 @@
                   (with-meta m
                     {:id (:id m)})))
            (map (preserve-meta ->ast))
-           (map (preserve-meta #(dissoc % :element/position)))
+           (map (preserve-meta #(dissoc % :element/x :element/y)))
            (map (preserve-meta s2/compile))
            (map (preserve-meta eval))
            (map (fn [view]
