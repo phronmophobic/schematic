@@ -1619,6 +1619,10 @@
   (backend/run (membrane.component/make-app  #'editor editor-state))
   ,)
 
+(defn run-editor []
+  (backend/run (membrane.component/make-app  #'editor editor-state))
+  )
+
 (comment
 
 
