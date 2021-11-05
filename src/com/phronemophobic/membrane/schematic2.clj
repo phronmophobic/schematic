@@ -389,18 +389,34 @@
 
 (defn normalize
   "Given an entity, return a vector of normalized entities."
-  [entity]
+  [next-eid entity]
   (loop [queue [entity]
+         next-eid next-eid
          normalized []]
     (if queue
       (let [entity (first queue)
             component (:instance/component entity)
+            [next-eid component] (if component
+                                   (if-let [cid (:element/id component)]
+                                     [next-eid component]
+                                     [(inc next-eid) (assoc component :element/id next-eid)])
+                                   [next-eid nil])
+
             childs (:element/children entity)
+            [next-eid childs] (reduce (fn [[next-eid childs] child]
+                                        (if-let [cid (:element/id child)]
+                                          [next-eid (conj childs child)]
+                                          [(inc next-eid) (conj childs
+                                                                (assoc child :element/id next-eid))]))
+                                      [next-eid []]
+                                      childs)
+
             norm (merge entity
                         (when component
-                          {:instance/component
-                           {:element/id (:element/id component)}})
-                        (when childs
+                          (let []
+                            {:instance/component
+                             {:element/id (:element/id component)}}))
+                        (when (seq childs)
                           {:element/children
                            (mapv (fn [child]
                                    {:element/id (:element/id child)})
@@ -412,19 +428,22 @@
                          next-queue)
             next-queue (into next-queue childs)]
         (recur next-queue
+               next-eid
                (conj normalized norm)))
       
       ;; else
-      normalized))
-  )
+      [next-eid normalized])))
 
-(defn add-entity [db entity]
-  (let [entities (normalize entity)]
-    (reduce (fn [db entity]
-              (update db (:element/id entity)
-                      merge entity))
-            db
-            entities)))
+(defn add-entity [es entity]
+  (let [next-eid (:next-eid es)
+        [next-eid entities] (normalize next-eid entity)]
+    (assoc es
+           :next-eid next-eid
+           :db (reduce (fn [db entity]
+                         (update db (:element/id entity)
+                                 merge entity))
+                       (:db es)
+                       entities))))
 
 (defn append-child* [es eid child]
   (let [[es child] (if (:element/id child)
@@ -447,15 +466,13 @@
                                      "-"
                                      (:element/id child))))]
                  (assoc child
-                        :element/name ename)))]
-   (update es
-           :db
-           (fn [db]
-             (-> db
-                 (update-in [eid :element/children]
-                            (fn [childs]
-                              (conj childs {:element/id (:element/id child)})))
-                 (add-entity child))))))
+                        :element/name ename)))
+
+        {:keys [next-eid db]} es
+        es (update-in es [:db eid :element/children]
+                      (fn [childs]
+                        (conj childs {:element/id (:element/id child)})))]
+    (add-entity es child)))
 
 (defn edit-elem* [es eid f]
   (update-in es
@@ -515,10 +532,9 @@
     (get-in es [:db eid])))
 
 (defn element-store []
-  (-> {}
+  (-> (->ElementStore {} 1)
       (add-entity #:element {:id ::root
-                             :children []})
-      (->ElementStore 1)))
+                             :children []})))
 
 
 
