@@ -1292,17 +1292,16 @@
   (let [pid (:element/id element)]
     (apply
      vertical-layout
+     (when dragging?
+       (on
+        :mouse-up
+        (fn [_]
+          [[::reparent-at pid 0]])
+        (divider {:hover? (get extra [:hover? :pid 0])})))
      (for [[i element] (map-indexed vector (:element/children element))]
        (let [eid (get element :element/id)
              expanded? (get expanded eid)]
          (vertical-layout
-          (when (and (zero? i)
-                     dragging?)
-            (on
-             :mouse-up
-             (fn [_]
-               [[::reparent-at pid 0]])
-             (divider {:hover? (get extra [:hover? :before eid])})))
           (horizontal-layout
            (if (:element/children element)
              (on
