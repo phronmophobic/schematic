@@ -84,6 +84,8 @@
 (s/def :element/stroke-weight double?)
 (s/def :element/hidden boolean?)
 
+;; really not sure about these
+(s/def :element/image string?)
 
 
 (s/def :element/children (s/coll-of :element/element
@@ -1656,6 +1658,19 @@
           (map compile)
           (:element/children m))))
 
+(defn compile-image [body m]
+  (when-let [image (:element/image m)]
+    (let [width (:element/width m)
+          height (:element/height m)]
+      [body
+       (if (or width height)
+         `(ui/image ~image [~width ~height])
+         `(ui/image ~image))])))
+
+(defn compile-form [body m]
+  (when-let [form (:element/form m)]
+    form))
+
 (defn compile-for [body m]
   (when-let [for-bindings (:element/for-bindings m)]
     `(vec
@@ -1992,7 +2007,9 @@
                (:flow-control.case/clauses m)))))
 
 (def default-passes
-  [compile-instance
+  [compile-form
+   compile-instance
+   compile-image
    compile-hidden
    compile-children
 
@@ -2050,7 +2067,9 @@
         ~body))))
 
 (def export-passes
-  [compile-instance-ref
+  [compile-form
+   compile-instance-ref
+   compile-image
    compile-hidden
    compile-children
 
