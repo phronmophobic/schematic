@@ -1966,7 +1966,7 @@
             stroke-elems (when (seq strokes)
                            (let [stroke-body# (gensym "stroke-body-")]
                              `(let [~stroke-body# ~(if (:element/text m)
-                                                     (compile-text m)
+                                                     (compile-text nil m)
                                                      (if (:element/path m)
                                                        (compile-path nil m)
                                                        (if-let [stroke-paths (seq (:element/stroke-path m))]
