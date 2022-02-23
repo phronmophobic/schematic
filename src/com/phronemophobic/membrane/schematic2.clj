@@ -1826,9 +1826,17 @@
   (when-let [text (:element/text m)]
     (let [body
           (if-let [font (:element/font m)]
-            `(ui/label ~text
-                       (ui/font ~(str (:font/name font))
-                                ~(:font/size font)))
+            (let [font# (gensym)]
+              `(ui/label ~text
+                         (let [~font#
+                               (ui/font ~(if-let [nm (:font/name font)]
+                                           (str nm)
+                                           nil)
+                                        ~(:font/size font))
+                               ~font# ~(if-let [weight (:font/weight font)]
+                                         `(assoc ~font# :weight ~weight)
+                                         font#)]
+                           ~font#)))
             `(ui/label ~text))
 
           body (if-let [color (:element/color m)]
