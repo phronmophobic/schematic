@@ -2074,15 +2074,17 @@
    nil
    passes))
 
-(defn compile
-  ([elem]
-   (if *passes*
-     (compile* elem *passes*)
-     (binding [*passes* default-passes]
-       (compile* elem *passes*))))
-  ([passes elem]
-   (binding [*passes* passes]
-     (compile elem))))
+(do
+  (defn compile
+    ([elem]
+     (if *passes*
+       (compile* elem *passes*)
+       (binding [*passes* default-passes]
+         (compile* elem *passes*))))
+    ([passes elem]
+     (binding [*passes* passes]
+       (compile elem))))
+  (def compile-memo (memoize compile)))
 
 (defn compile-defui [body m]
   (let [ks (->> (:component/defaults m)
