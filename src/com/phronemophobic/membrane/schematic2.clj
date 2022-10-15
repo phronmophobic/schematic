@@ -587,11 +587,13 @@
 (declare compile)
 (defn render
   ([root]
-   (ui/try-draw 
-    (-> root compile eval)
-    (fn [draw e]
-      (draw (ui/label "Exception!"))))))
-
+   (try
+     (ui/try-draw
+      (-> root compile eval)
+      (fn [draw e]
+        (draw (ui/label "Exception!"))))
+     (catch Exception e
+       (ui/label "Compile EXception!")))))
 #_(defn render-elem [elem]
   (first (render {0 elem} [0])))
 
