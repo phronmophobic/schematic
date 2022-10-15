@@ -2035,6 +2035,13 @@
                      cat)
                (:flow-control.case/clauses m)))))
 
+;; experimenting with just some events for now
+(defn compile-events [body m]
+  (when-let [mouse-down (:element/mouse-down m)]
+    `(ui/on
+      :mouse-down ~mouse-down
+      ~body)))
+
 (def default-passes
   [compile-form
    compile-instance
@@ -2061,6 +2068,8 @@
    compile-padding
    compile-paint
    compile-transform
+
+   compile-events
    compile-position
    ;;   compile-bounds
    ])
