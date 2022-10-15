@@ -12,7 +12,6 @@
 
             [membrane.skia :as backend]
             [membrane.skia :as skia]
-            [com.phronemophobic.membrane.search :as search]
             [clojure.zip :as z]
             [clj-http.client :as http]
             [membrane.basic-components :as basic]

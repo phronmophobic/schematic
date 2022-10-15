@@ -17,13 +17,32 @@
             [clojure.spec.gen.alpha :as gen]
 
             [clojure.zip :as z]
-            [com.phronemophobic.membrane.search :as search]
+            [zippo.core :as zippo]
             [com.phronemophobic.membrane.svg :as svg]
             [com.rpl.specter :as specter]
 
             ;; [autonormal.core :as auto]
             [com.phronemophobic.membrane.scrollview :as sv])
   (:gen-class))
+
+(defn clj-zip [obj]
+  (z/zipper #(and (seqable? %)
+                  (not (string? %)))
+            seq
+            (fn [node children]
+              (let [children (remove #{::delete} children)]
+                (if (map-entry? node)
+                  (vec children)
+                  (into (empty node) children))))
+            obj))
+
+(defn search-keep-all [obj pred]
+  (->> (zippo/loc-seq (clj-zip obj))
+       (map z/node)
+       (keep #(when-let [ret (pred %)]
+                ret))))
+
+
 
 (defn element-zip [root]
   (z/zipper #(seq (:element/children %))
@@ -2149,7 +2168,7 @@
                  figma/normalize-bounds
                  figma/figma->membrane)
         buttons (-> view
-                    (search/keep-all
+                    (search-keep-all
                      (fn [m]
                        (when-let [name (:name m)]
                          (let [variant (figma/name->variant name)]
@@ -2171,7 +2190,7 @@
                  figma/normalize-bounds
                  figma/figma->membrane)
         cbs (-> view
-                (search/keep-all
+                (search-keep-all
                  (fn [m]
                    (when (= (:type m)
                             "COMPONENT")
@@ -2190,7 +2209,7 @@
                  figma/normalize-bounds
                  figma/figma->membrane)
         fields (-> view
-                   (search/keep-all
+                   (search-keep-all
                     (fn [m]
                       (when (= (:type m)
                                "COMPONENT")

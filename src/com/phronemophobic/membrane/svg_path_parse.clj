@@ -1,7 +1,7 @@
 (ns com.phronemophobic.membrane.svg-path-parse
   (:require [instaparse.core :as insta]
             [clojure.zip :as z]
-            [com.phronemophobic.membrane.search :as search]
+            [zippo.core :as zippo]
             clojure.walk
 
             [meander.strategy.epsilon :as r]
@@ -30,15 +30,21 @@
   (and (vector? p)
        (#{:wsp :comma_wsp} (first p))))
 
+(defn search-zip-walk [zip pred]
+  (z/root
+   (zippo/loc-update-all zip
+                         #(z/edit % pred))))
+
+
 (defn delete-whitespace [p]
-  (search/zip-walk (parse-zip p)
+  (search-zip-walk (parse-zip p)
                    (fn [p]
                      (if (vector? p)
                        (vec (remove is-whitespace? p))
                        p))))
 
 (defn simplify-numbers [p]
-  (search/zip-walk (parse-zip p)
+  (search-zip-walk (parse-zip p)
                    (fn [p]
                      (if-let [match (m/find p
 

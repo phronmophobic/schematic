@@ -4,18 +4,56 @@
             [membrane.skia :as backend]
             [com.phronemophobic.membrane.schematic2 :as s2]
             [com.phronemophobic.membrane.figma :as figma]
-            [com.phronemophobic.membrane.search :as search]
             [membrane.ui :as ui]
             [membrane.basic-components :as basic]
             [membrane.component
              :refer [defui]]
             [clojure.zip :as z]
+            [zippo.core :as zippo]
             [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as gen]))
 
 (defn preserve-meta [f]
   (fn [o]
     (with-meta (f o) (meta o))))
+
+(defn clj-zip [obj]
+  (z/zipper #(and (seqable? %)
+                  (not (string? %)))
+            seq
+            (fn [node children]
+              (let [children (remove #{::delete} children)]
+                (if (map-entry? node)
+                  (vec children)
+                  (into (empty node) children))))
+            obj))
+
+(defn search-keep-all [obj pred]
+  (->> (zippo/loc-seq (clj-zip obj))
+       (map z/node)
+       (keep #(when-let [ret (pred %)]
+                ret))))
+
+(defn search-find-all [obj pred]
+  (zippo/loc-find-all (clj-zip obj)
+                      (zippo/->loc-pred pred)))
+
+
+(defn search-find [obj pred]
+  (zippo/loc-find (clj-zip obj)
+                  (zippo/->loc-pred pred)))
+
+(defn search-some [obj pred]
+  (loop [zip (clj-zip obj)]
+    (when-not (z/end? zip)
+      (if-let [match (pred (z/node zip))]
+        match
+        (recur (z/next zip))))))
+
+(defn search-zip-walk [zip pred]
+  (z/root
+   (zippo/loc-update-all zip
+                         #(z/edit % pred))))
 
 (defn load-view []
   (def design-system-response
@@ -64,7 +102,7 @@
                        views))
 
 (def buttons
-  (->> (search/find-all
+  (->> (search-find-all
         button-view
         (fn [m]
           (= "COMPONENT_SET"
@@ -72,7 +110,7 @@
        (map z/node)
        (mapcat (fn [cset]
                  (let [style (figma/name->style (:name cset))
-                       variants (search/keep-all
+                       variants (search-keep-all
                                  cset
                                  (fn [m]
                                    (when-let [name (:name m)]
@@ -109,7 +147,7 @@
                  (map (juxt :figma/parameters figma/->ast))
                  (map (fn [[k m]]
                         [k
-                         (-> (search/find m :element/text)
+                         (-> (search-find m :element/text)
                              
                              (z/edit assoc :element/text 'text)
                              z/root)]))
@@ -162,7 +200,7 @@
                             %)
                          views))
 (def checkboxes
-  (->> (search/find-all
+  (->> (search-find-all
         checkbox-view
         (fn [m]
           (= "COMPONENT_SET"
@@ -170,7 +208,7 @@
        (map z/node)
        (mapcat (fn [cset]
                  (let [style (figma/name->style (:name cset))
-                       variants (search/keep-all
+                       variants (search-keep-all
                                  cset
                                  (fn [m]
                                    (when-let [name (:name m)]
@@ -242,8 +280,8 @@
                  (map (juxt :figma/parameters figma/->ast))
                  (map (fn [[k m]]
                         [k
-                         (-> (search/find m :element/text)
-                             (z/replace ::search/delete) 
+                         (-> (search-find m :element/text)
+                             (z/replace ::delete)
                              z/root)]))
                  (map (fn [[k m]]
                         [k (dissoc m :element/x :element/y)])))
@@ -278,7 +316,7 @@
         (for [{:keys [invalid
                       indeterminate
                       state]}
-              (->> (search/some schematic-checkbox-component
+              (->> (search-some schematic-checkbox-component
                                 :flow-control.case/clauses)
                    keys
                    (remove #(= (:state %) :hover))
@@ -310,7 +348,7 @@
         views))
 
 (def dropdown-items
-  (->> (search/keep-all
+  (->> (search-keep-all
         parts-view
         (fn [m]
           (when (and (= "COMPONENT_SET"
@@ -319,7 +357,7 @@
                         (:name m)))
             m)))
        (mapcat (fn [cset]
-                 (let [variants (search/keep-all
+                 (let [variants (search-keep-all
                                  cset
                                  (fn [m]
                                    (when-let [name (:name m)]
@@ -382,7 +420,7 @@
                  (map #(dissoc % :name))
                  (map figma/->ast)
                  (map (fn [m]
-                        (-> (search/find m (fn [m]
+                        (-> (search-find m (fn [m]
                                              (= "Option"
                                                 (:element/text m))))
                             (z/edit assoc :element/text 'text)
@@ -432,7 +470,7 @@
 (defui dropdown-item-app [{:keys []}]
   (let [all-dropdown-items
         (for [{:keys [state]}
-              (->> (search/some schematic-dropdown-item-component
+              (->> (search-some schematic-dropdown-item-component
                                 :flow-control.case/clauses)
                    keys
                    (remove #(= (:state %) :hover))
@@ -462,7 +500,7 @@
         views))
 
 (def dropdowns
-  (->> (search/keep-all
+  (->> (search-keep-all
         dropdown-view
         (fn [m]
           (when (and (= "COMPONENT_SET"
@@ -471,7 +509,7 @@
                         (:name m)))
             m)))
        (mapcat (fn [cset]
-                 (let [variants (search/keep-all
+                 (let [variants (search-keep-all
                                  cset
                                  (fn [m]
                                    (when-let [name (:name m)]
@@ -542,12 +580,12 @@
                  (map #(dissoc % :name))
                  (map (juxt :figma/parameters figma/->ast))
                  (map (fn [[k m]]
-                        [k (-> (search/find m #{"Choices"})
+                        [k (-> (search-find m #{"Choices"})
                                (z/replace 'text)
                                z/root)]))
 
                  (map (fn [[k m]]
-                        (let [zmenu (search/find m #(when-let [name (:element/name %)]
+                        (let [zmenu (search-find m #(when-let [name (:element/name %)]
                                                       (clojure.string/includes? name "Dropdown Menu")))]
                           [k (if-not zmenu
                                m
@@ -679,7 +717,7 @@
 
 
 (def textfields
-  (->> (search/keep-all
+  (->> (search-keep-all
         textfield-view
         (fn [m]
           (when (and (= "COMPONENT_SET"
@@ -690,7 +728,7 @@
             m)))
        (mapcat (fn [cset]
                  (let [style (figma/name->style (:name cset))
-                       variants (search/keep-all
+                       variants (search-keep-all
                                  cset
                                  (fn [m]
                                    (when-let [name (:name m)]
@@ -762,23 +800,23 @@
               
               (map figma/->ast)
               #_(map (fn [[k m]]
-                       [k (-> (search/find m (fn [m]
+                       [k (-> (search-find m (fn [m]
                                                (and (= "Text" (:element/text m))
                                                     (= :element/label (:element/type m)))))
                               (z/edit #(assoc % :element/text 'text))
                               z/root)]))
               (map (fn [m]
-                     (let [match (search/find m (fn [m]
+                     (let [match (search-find m (fn [m]
                                                   (when-let [name (:element/name m)]
                                                     (.startsWith name "Caret"))))]
                        (if match
                          (-> match
-                             (z/replace ::search/delete)
+                             (z/replace ::delete)
                              z/root)
                          m))))
               (map (fn [m]
                      (let [root m]
-                       (-> (search/find m (fn [m]
+                       (-> (search-find m (fn [m]
                                             (and (= "Text" (:element/text m))
                                                  (= :element/label (:element/type m)))))
                            (z/edit
@@ -961,7 +999,7 @@
           views))
 
  (def ranges
-   (->> (search/keep-all
+   (->> (search-keep-all
          ranges-view
          (fn [m]
            (when (and (= "COMPONENT"
