@@ -1,6 +1,6 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
-        com.phronemophobic/membrane {:mvn/version "10.0.3-beta"}
+        com.phronemophobic/membrane {:mvn/version "0.10.3-beta"}
         datascript/datascript {:mvn/version "1.0.5"}
         mogenslund/liquid {:mvn/version "2.0.3"}
         rewrite-clj/rewrite-clj {:mvn/version "1.0.644-alpha"}
