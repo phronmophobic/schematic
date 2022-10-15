@@ -19,13 +19,14 @@
         }
  :aliases
  {
+
+  :build {:deps {io.github.clojure/tools.build {:git/tag "v0.8.3" :git/sha "0d20256"}
+                 slipset/deps-deploy {:mvn/version "RELEASE"}}
+          :ns-default build}
+
   :project {:extra-deps
             {com.phronemophobic.membrane/skialib-macosx-aarch64 { ;;:mvn/version "0.9.27-beta"
                                                                  :local/root "../membrane2/csource/macos-aarch64"}}
-            com.phronemophobic/membrane {;;:mvn/version "0.9.25-beta"
-                                         :local/root "../membrane2"
-                                     }
-            }
-  }
- #_#_:mvn/repos
- {"space-maven" {:url "https://packages.jetbrains.team/maven/p/skija/maven"}}}
+            com.phronemophobic/membrane { ;;:mvn/version "0.9.25-beta"
+                                         :local/root "../membrane2"}}
+  }}
