@@ -1,41 +1,31 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
-        com.phronemophobic/membrane {;;:mvn/version "0.9.25-beta"
-                                     :local/root "../membrane2"
-                                     }
-        com.phronemophobic.membrane/skialib-macosx {:mvn/version "0.9.27-beta"}
-
+        com.phronemophobic/membrane {:mvn/version "10.0.3-beta"}
         datascript/datascript {:mvn/version "1.0.5"}
         mogenslund/liquid {:mvn/version "2.0.3"}
         rewrite-clj/rewrite-clj {:mvn/version "1.0.644-alpha"}
         clj-http/clj-http {:mvn/version "3.12.2"}
         org.clojure/data.json {:mvn/version "1.0.0"}
         camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.2"}
-        com.phronemophobic.membrane/search {:local/root "../search"}
+        com.github.igrishaev/zippo {:mvn/version "0.1.0"}
+        spec-provider/spec-provider {:mvn/version "0.4.14"}
+
         ;; github-phronmophobic/clj-oauth2 {:local/root "../clj-oauth2"}
 
         com.phronemophobic/clj-rtree {:mvn/version "1.0"}
         instaparse/instaparse {:mvn/version "1.4.10"}
         org.clojure/test.check {:mvn/version "1.1.0"}
+
         }
  :aliases
- {:run-m {:main-opts ["-m" "com.phronemophobic.membrane.schematic"]}
-  :run-x {:ns-default com.phronemophobic.membrane.schematic
-          :exec-fn greet
-          :exec-args {:name "Clojure"}}
-  :test {:extra-paths ["test"]
-         :extra-deps {org.clojure/test.check {:mvn/version "1.1.0"}}}
-  :runner
-  {:extra-deps {com.cognitect/test-runner
-                {:git/url "https://github.com/cognitect-labs/test-runner"
-                 :sha "b6b3193fcc42659d7e46ecd1884a228993441182"}}
-   :main-opts ["-m" "cognitect.test-runner"
-               "-d" "test"]}
-  :uberjar {:replace-deps {seancorfield/depstar {:mvn/version "2.0.216"}}
-            :exec-fn hf.depstar/uberjar
-            :exec-args {:aot true
-                        :jar "schematic.jar"
-                        :main-class "com.phronemophobic.membrane.schematic"
-                        :sync-pom true}}}
- :mvn/repos
+ {
+  :project {:extra-deps
+            {com.phronemophobic.membrane/skialib-macosx-aarch64 { ;;:mvn/version "0.9.27-beta"
+                                                                 :local/root "../membrane2/csource/macos-aarch64"}}
+            com.phronemophobic/membrane {;;:mvn/version "0.9.25-beta"
+                                         :local/root "../membrane2"
+                                     }
+            }
+  }
+ #_#_:mvn/repos
  {"space-maven" {:url "https://packages.jetbrains.team/maven/p/skija/maven"}}}
