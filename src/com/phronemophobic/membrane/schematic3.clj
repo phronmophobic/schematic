@@ -95,7 +95,7 @@
 
 (defn highlight-selection [view selection]
   (loop [highlight []
-        zview (ui-zip view)]
+         zview (ui-zip view)]
 
     (if (z/end? zview)
       highlight
@@ -105,15 +105,12 @@
                     ::ast)
             eid (:element/id ast)]
         #_(when (selection eid)
-          (clojure.pprint/pprint
-           {:id (:element/id ast)
-            :coord (global-coord zview)
-            :bounds (ui/bounds view)})
-          )
+            (clojure.pprint/pprint
+             {:id (:element/id ast)
+              :coord (global-coord zview)
+              :bounds (ui/bounds view)}))
 
-        (recur (if (and (selection eid)
-                        #_(= ::rectangle
-                             (:element/type ast)))
+        (recur (if (selection eid)
                  (conj highlight
                        (let [[gx gy] (global-coord zview)
                              [w h] (ui/bounds view)]
@@ -126,7 +123,7 @@
 
 (s/def :element/id uuid?)
 #_(s/def :element/type
-  #{::rectangle})
+    #{::rectangle})
 
 (s/def ::form any?)
 (s/def ::coord (s/or :double double?
@@ -246,6 +243,8 @@
       (subs s 0 n)
       s)))
 
+
+
 (defui component-toolbar [{:keys [selected-component interns]}]
   (apply
    ui/horizontal-layout
@@ -309,6 +308,9 @@
                         [[:set $selected-component v]])})))
    ))
 
+
+
+
 (declare my-component)
 (def eval-ns *ns*)
 
@@ -321,7 +323,7 @@
       `(fn [~'interns]
          ~(compile2 form))))))
 
-(defui rectangle-editor [{:keys [root selection mpos selected-component interns]}]
+(defui place-element-tool [{:keys [root selection mpos selected-component interns]}]
   (let [[cw ch :as size] (:membrane.stretch/container-size context)]
     [(ui/on
       :mouse-move
@@ -367,6 +369,77 @@
                          :interns interns})])
   )
 
+(defn find-elem-at-point [view pos]
+  (let [eid
+        ;; use seq to make sure we don't stop for empty sequences
+        (some (fn [child]
+                (when-let [local-pos (ui/within-bounds? child pos)]
+                  (find-elem-at-point child local-pos)))
+              (reverse (ui/children view)))]
+    (if eid
+      eid
+      (-> (meta view)
+          ::ast
+          :element/id))))
+
+(defeffect ::select-element-at-point [$selection view mpos]
+  (let [eid (find-elem-at-point view mpos)]
+    (if eid
+      (dispatch! :update $selection
+                 (fn [selection]
+                   (if (contains? selection eid)
+                     #{}
+                     #{eid})))
+      (dispatch! :set $selection #{}))))
+
+(defui select-element-tool [{:keys [root selection selected-component interns]}]
+  (let [[cw ch :as size] (:membrane.stretch/container-size context)
+        view
+        (binding [*ns* eval-ns]
+          (let [f (render2 root)]
+            (f interns)))
+        highlighted-view
+        (if selection
+          [(highlight-selection view selection)
+           view
+           ]
+          view)]
+    (ui/on
+     :mouse-down (fn [mpos]
+                   [[::select-element-at-point $selection view mpos]])
+     (ui/fixed-bounds
+      [cw ch]
+      (ui/no-events highlighted-view)))))
+
+
+(defui tool-selector [{:keys [selected-tool root selection interns]}]
+  (ui/vertical-layout
+   (apply
+    ui/horizontal-layout
+    (for [tool-key [:place-element-tool
+                    :select-element-tool]]
+      (let [hover? (get extra [:hover? tool-key])
+            hover? (or hover?
+                       (= selected-tool
+                          tool-key))]
+        (basic/button {:text (name tool-key)
+                       :hover? hover?
+                       :on-click
+                       (fn []
+                         [[:set $selected-tool tool-key]])}))))
+
+   (case selected-tool
+     :place-element-tool (place-element-tool {:root root
+                                              :interns interns
+                                              :selection selection})
+
+     :select-element-tool (select-element-tool {:root root
+                                                :interns interns
+                                                :selection selection})
+
+     ;; else
+     (ui/label (str "unknown tool: " selected-tool)))))
+
 (defn form-zip [view]
   (z/zipper (constantly true)
             ui/children
@@ -408,7 +481,7 @@
                  (if (#{::group
                         ::vertical-layout
                         ::horizontal-layout}
-                        (:element/type new-parent))
+                      (:element/type new-parent))
                    (let [elem (specter/select-one
                                [WALK-ELEM #(= eid
                                               (:element/id %))]
@@ -483,9 +556,9 @@
                           :root child
                           :collapse? collapse?})
               (when drop-object
-               (reparent-drop-element
-                {:eid eid
-                 :i (inc i)})))))))))
+                (reparent-drop-element
+                 {:eid eid
+                  :i (inc i)})))))))))
 
     ;; else
     (ui/on
@@ -505,6 +578,7 @@
           :element/body {:element/type ::group
                          :element/id ::root-group
                          :element/children []}}
+   :selected-tool :place-element-tool
    :interns {}
    :selection #{}
    :collapsed #{}})
@@ -669,9 +743,9 @@
                           :component/name 'my-component
                           :component/args []
                           :component/body elem}}
-                 :prototype/args {:element/type ::code
-                                  :element/code {}}
-                 :element/id (random-uuid)})))
+                :prototype/args {:element/type ::code
+                                 :element/code {}}
+                :element/id (random-uuid)})))
 
 
 (defeffect ::wrap-translate [eid]
@@ -683,6 +757,33 @@
                 :element/y 0
                 :element/body elem}
                )))
+
+(defui binding-editor [{:keys [binding code]}]
+  (let [binding-buf (get extra :binding-buffer)
+        binding-buf (or binding-buf
+                        (buffer/buffer
+                         (with-out-str
+                           (clojure.pprint/pprint binding))
+                         {:rows 40 :cols 15
+                          :mode :insert}))
+        code-buf (get extra :code-buf)
+        code-buf (or code-buf
+                     (buffer/buffer
+                      (with-out-str
+                        (clojure.pprint/pprint code))
+                      {:rows 40 :cols 15
+                       :mode :insert}))]
+    (ui/horizontal-layout
+     (basic/button {:text "X"
+                    :on-click (fn []
+                                [[::cancel-binding-edit]])})
+     (basic/button {:text "save"
+                    :on-click (fn []
+                                [[::save-binding-edit
+                                  (buffer/text binding-buf)
+                                  (buffer/text code-buf)]])})
+     (code-editor/text-editor {:buf binding-buf})
+     (code-editor/text-editor {:buf code-buf}))))
 
 (defui property-detail-editor [{:keys [elem properties]}]
   (let [eid (:element/id elem)]
@@ -711,32 +812,7 @@
             (ui/label k)
             (ui/label (get elem k))))))))))
 
-(defui binding-editor [{:keys [binding code]}]
-  (let [binding-buf (get extra :binding-buffer)
-        binding-buf (or binding-buf
-                        (buffer/buffer
-                         (with-out-str
-                           (clojure.pprint/pprint binding))
-                         {:rows 40 :cols 15
-                          :mode :insert}))
-        code-buf (get extra :code-buf)
-        code-buf (or code-buf
-                     (buffer/buffer
-                      (with-out-str
-                        (clojure.pprint/pprint code))
-                      {:rows 40 :cols 15
-                       :mode :insert}))]
-    (ui/horizontal-layout
-     (basic/button {:text "X"
-                    :on-click (fn []
-                                [[::cancel-binding-edit]])})
-     (basic/button {:text "save"
-                    :on-click (fn []
-                                [[::save-binding-edit
-                                  (buffer/text binding-buf)
-                                  (buffer/text code-buf)]])})
-     (code-editor/text-editor {:buf binding-buf})
-     (code-editor/text-editor {:buf code-buf}))))
+
 
 (defui let-detail-editor [{:keys [elem]}]
   (let [eid (:element/id elem)]
@@ -947,7 +1023,7 @@
      (viscous/inspector {:obj (viscous/wrap elem)})))
   )
 
-(defui main-view [{:keys [root selection collapsed interns]}]
+(defui main-view [{:keys [root selection collapsed interns selected-tool]}]
   (let [[cw ch :as size] (:membrane.stretch/container-size context)]
     (dnd/drag-and-drop
      {:$body nil
@@ -984,16 +1060,15 @@
         (stretch/with-container-size [(max 0
                                            (- cw 400 400))
                                       ch]
-          (basic/scrollview
-           {:scroll-bounds
-            [(max 0
-                  (- cw 400 400))
-             ch]
-            :$body nil
-            :body
-            (rectangle-editor {:root root
-                               :interns interns
-                               :selection selection})}))
+          (ui/scissor-view
+           [0 0]
+           [(max 0
+                 (- cw 400 400))
+            ch]
+           (tool-selector {:selected-tool selected-tool
+                           :root root
+                           :selection selection
+                           :interns interns})))
 
         (when (> (- cw 400)
                  400)
