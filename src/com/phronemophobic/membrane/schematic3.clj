@@ -412,12 +412,86 @@
       (ui/no-events highlighted-view)))))
 
 
+(defeffect ::start-move-elem [$drag-state root selection mpos]
+  (when (seq selection)
+    (let [elems
+          (specter/select
+           [WALK-ELEM
+            (fn [elem]
+              (and
+               (selection (:element/id elem))
+               (= ::translate (:element/type elem))))]
+           root)
+          starting-coords
+          (into {}
+                (map (fn [elem]
+                       [(:element/id elem)
+
+                        [(:element/x elem 0) (:element/y elem 0)]]))
+                elems)]
+      (when (seq starting-coords)
+        (dispatch! :set $drag-state
+                   {:start-mpos mpos
+                    :selection (into #{} (keys starting-coords))
+                    :starting-coords starting-coords})))))
+
+(defeffect ::move-elem [drag-state mpos]
+  (let [selection (:selection drag-state)
+        starting-coords (:starting-coords drag-state)
+        [ox oy] (:start-mpos drag-state)
+        [mx my] mpos]
+    (dispatch! :update
+               (specter/path [:root WALK-ELEM
+                              (fn [elem]
+                                (selection (:element/id elem)))])
+               (fn [elem]
+                 (let [[sx sy] (get starting-coords (:element/id elem))]
+                   (assoc elem
+                          :element/x (+ sx (- mx ox))
+                          :element/y (+ sy (- my oy))))))))
+
+(defui move-element-tool [{:keys [root selection selected-component interns]}]
+  (let [drag-state (get extra :drag-state)
+        [cw ch :as size] (:membrane.stretch/container-size context)
+        view
+        (binding [*ns* eval-ns]
+          (let [f (render2 root)]
+            (f interns)))
+        highlighted-view
+        (if selection
+          [(highlight-selection view selection)
+           view
+           ]
+          view)
+
+        main (ui/fixed-bounds
+              [cw ch]
+              (ui/no-events highlighted-view))
+
+        main (if drag-state
+               (ui/on :mouse-move
+                      (fn [mpos]
+                        [[::move-elem drag-state mpos]])
+                      :mouse-up
+                      (fn [mpos]
+                        [[::move-elem drag-state mpos]
+                         [:set $drag-state nil]])
+                      main)
+               (ui/on :mouse-down
+                      (fn [mpos]
+                        [[::start-move-elem $drag-state root selection mpos]])
+                      main))
+        ]
+    main))
+
+
 (defui tool-selector [{:keys [selected-tool root selection interns]}]
   (ui/vertical-layout
    (apply
     ui/horizontal-layout
     (for [tool-key [:place-element-tool
-                    :select-element-tool]]
+                    :select-element-tool
+                    :move-element-tool]]
       (let [hover? (get extra [:hover? tool-key])
             hover? (or hover?
                        (= selected-tool
@@ -436,6 +510,10 @@
      :select-element-tool (select-element-tool {:root root
                                                 :interns interns
                                                 :selection selection})
+
+     :move-element-tool (move-element-tool {:root root
+                                            :interns interns
+                                            :selection selection})
 
      ;; else
      (ui/label (str "unknown tool: " selected-tool)))))
