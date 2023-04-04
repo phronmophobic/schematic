@@ -701,10 +701,8 @@
             data
             (binding [*ns* eval-ns]
               (read-string txt))]
-        (prn eid)
         (dispatch! ::update-elem eid
                    (fn [elem]
-                     (prn "update elem" eid)
                      (assoc-in elem
                                [:instance/args
                                 :element/code]
