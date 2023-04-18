@@ -8,6 +8,8 @@
             [membrane.alpha.stretch :as stretch]
             [com.rpl.specter :as specter]
             [clojure.zip :as z]
+            [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [zippo.core :as zippo]
             [clojure.test.check.generators :as gen]
             [membrane.basic-components :as basic]
@@ -246,67 +248,75 @@
 
 
 (defui component-toolbar [{:keys [selected-component interns]}]
-  (apply
-   ui/horizontal-layout
-   (for [[k v] (into
-                [[:checkbox {:element/type ::instance
-                             :instance/args
-                             {:element/type ::code
-                              :element/code {:checked? true}}
-                             :instance/component `basic/checkbox}]
-                 [:paragraph {:element/type ::paragraph
-                              :element/text "label"
-                              :element/width nil}]
-                 [:textarea {:element/type ::instance
-                             :instance/args
-                             {:element/type ::code
-                              :element/code {:text "text"}}
-                             :instance/component `basic/textarea}]
-                 [:dropdown {:element/type ::instance
-                             :instance/args
-                             {:element/type ::code
-                              :element/code {:options [[:this "This"]
-                                                       [:that "That "]
-                                                       [:the-other "The Other"]]
-                                             :open? true}}
-                             :instance/component `basic/dropdown}]
-                 [:button {:element/type ::instance
+  (let [options
+        (into
+         [[:checkbox {:element/type ::instance
+                      :instance/args
+                      {:element/type ::code
+                       :element/code {:checked? true}}
+                      :instance/component `basic/checkbox}]
+          [:paragraph {:element/type ::paragraph
+                       :element/text "label"
+                       :element/width nil}]
+          [:textarea {:element/type ::instance
+                      :instance/args
+                      {:element/type ::code
+                       :element/code {:text "text"}}
+                      :instance/component `basic/textarea}]
+          [:dropdown {:element/type ::instance
+                      :instance/args
+                      {:element/type ::code
+                       :element/code {:options [[:this "This"]
+                                                [:that "That "]
+                                                [:the-other "The Other"]]
+                                      :open? true}}
+                      :instance/component `basic/dropdown}]
+          [:button {:element/type ::instance
+                    :instance/args
+                    {:element/type ::code
+                     :element/code {:text "button"}}
+                    :instance/component `basic/button}]
+          [:number-slider {:element/type ::instance
                            :instance/args
                            {:element/type ::code
-                            :element/code {:text "button"}}
-                           :instance/component `basic/button}]
-                 [:number-slider {:element/type ::instance
-                                  :instance/args
-                                  {:element/type ::code
-                                   :element/code {:num 3
-                                                  :min 0
-                                                  :max 20}}
-                                  :instance/component `basic/number-slider}]
-                 [:group {:element/type ::group
-                          :element/children []}]
-                 [:vertical-layout
-                  {:element/type ::vertical-layout
+                            :element/code {:num 3
+                                           :min 0
+                                           :max 20}}
+                           :instance/component `basic/number-slider}]
+          [:group {:element/type ::group
                    :element/children []}]
-                 [:horizontal-layout
-                  {:element/type ::horizontal-layout
-                   :element/children []}]]
-                (for [[k v] interns]
-                  [(str k)
-                   {:element/type ::instance
-                    :instance/args {:element/type ::code
-                                    :element/code {}}
-                    :instance/component {:element/type ::reference
-                                         ::id k}}]))]
-     (let [hover? (get extra [:hover? k])
-           hover? (or hover?
-                      (= selected-component
-                         v))]
-       (basic/button {:text (truncate (name k) 10)
-                      :hover? hover?
-                      :on-click
-                      (fn []
-                        [[:set $selected-component v]])})))
-   ))
+          [:vertical-layout
+           {:element/type ::vertical-layout
+            :element/children []}]
+          [:horizontal-layout
+           {:element/type ::horizontal-layout
+            :element/children []}]]
+         (for [[k v] (:refs interns)
+               :let [lbl (if-let [lbl (get-in interns [:meta k :name])]
+                           (name lbl)
+                           (str k))]]
+           [lbl
+            {:element/type ::instance
+             :instance/args {:element/type ::code
+                             :element/code {}}
+             :instance/component {:element/type ::reference
+                                  ::id k}}]))]
+   (apply
+    ui/vertical-layout
+    (for [chunk (partition-all 6 options)]
+      (apply
+       ui/horizontal-layout
+       (for [[k v] chunk]
+         (let [hover? (get extra [:hover? k])
+               hover? (or hover?
+                          (= selected-component
+                             v))]
+           (basic/button {:text (truncate (name k) 10)
+                          :hover? hover?
+                          :on-click
+                          (fn []
+                            [[:set $selected-component v]])})))
+       )))))
 
 
 
@@ -333,19 +343,32 @@
       (fn [[mx my]]
 
         (when selected-component
-          [[:update $root
-            update-in
-            [:element/body
-             :element/children]
-            conj
+          (let [elem (if (= ::reference
+                            (-> selected-component
+                                :instance/component
+                                :element/type))
+                       (assoc-in selected-component
+                                 [:instance/args
+                                  :element/code]
+                                 (get-in interns [:meta
+                                                  (-> selected-component
+                                                      :instance/component
+                                                      ::id)
+                                                  :defaults]))
+                       selected-component)]
+           [[:update $root
+             update-in
+             [:element/body
+              :element/children]
+             conj
 
-            {:element/type ::translate
-             :element/id (random-uuid)
-             :element/x mx
-             :element/y my
-             :element/body
-             (assoc selected-component
-                    :element/id (random-uuid))}]]))
+             {:element/type ::translate
+              :element/id (random-uuid)
+              :element/x mx
+              :element/y my
+              :element/body
+              (assoc elem
+                     :element/id (random-uuid))}]])))
       (ui/fixed-bounds
        [cw ch]
        (ui/no-events
@@ -624,7 +647,9 @@
              (reparent-drop-element {:eid eid
                                      :i 0}))
            (for [[i child] (eduction
-                            (remove #(= drop-object (:element/id %)))
+                            (if drop-object
+                              (remove #(= drop-object (:element/id %)))
+                              identity)
                             (map-indexed vector)
                             (children root))]
              (ui/vertical-layout
@@ -646,8 +671,54 @@
         [::dnd/drag-start(:element/id root) ]])
      (elem-label root (selection (:element/id root))))))
 
+(defn write-edn [w obj]
+  (binding [*print-length* nil
+            *print-level* nil
+            *print-dup* false
+            *print-meta* false
+            *print-readably* true
 
+            ;; namespaced maps not part of edn spec
+            *print-namespace-maps* false
+
+            *out* w]
+    (pr obj)))
+
+(def last-save (atom (System/currentTimeMillis)))
+(defn now-str []
+  (.format (java.text.SimpleDateFormat. "yyyy-MM-dd_HH-mm-ss")
+           (java.util.Date.)))
+
+(declare app-state)
+(defn save!
+  ([]
+   (save! (:root @app-state)))
+  ([root]
+   (prn "saving...")
+   (with-open [w (io/writer "saves/latest-save.edn")]
+     (write-edn w root))
+   (with-open [w (io/writer (str "saves/save-" (now-str) ".edn"))]
+     (write-edn w root))
+   (reset! last-save (System/currentTimeMillis))
+   nil))
+(defn maybe-save [root]
+  (when (> (- (System/currentTimeMillis)
+              @last-save)
+           ;; 3 min
+           (* 1000 60 3))
+    (save! root)))
 (defonce app-state (atom nil))
+(defonce app-history
+  (let [app-history (atom [])]
+    (add-watch app-state ::history
+               (fn [k ref old new]
+                 (when (not= old new)
+                   (future
+                     (maybe-save (:root new)))
+                   (swap! app-history conj new))))
+    app-history))
+
+
 
 (def initial-state
   {:root {:element/type ::let
@@ -661,28 +732,49 @@
    :selection #{}
    :collapsed #{}})
 
+(defn load-latest []
+  (with-open [rdr (io/reader "saves/latest-save.edn")
+              pbr (java.io.PushbackReader. rdr)]
+    (edn/read pbr)))
+
+(defn load! []
+  (reset! app-state
+          (assoc initial-state
+                 :root (load-latest))))
+
 (defn init! []
   (reset! app-state initial-state)
   )
 
+(def branch-form-keys
+  [:element/body
+   :prototype/component
+   :component/body
+   ::value])
+(def branch-children-keys
+  [:element/children])
+
 (defn element-branch? [e]
   (or (vector? e)
-      (:element/body e)
-      (:element/children e)
-      (:prototype/component e)
-      (::value e)))
+      (some #(get e %) branch-form-keys)
+      (some #(get e %) branch-children-keys)))
 
 (defn element-children [e]
   (if (vector? e)
     e
-    (if-let [body (:element/body e)]
-      [body]
-      (if-let [children (:element/children e)]
-        children
-        (if-let [component (:prototype/component e)]
-          [(-> component
-               ::value
-               :component/body)])))))
+    (or (some (fn [k]
+                (when-let [form (get e k)]
+                  [form]))
+              branch-form-keys)
+        (some #(get e %) branch-children-keys))
+    #_(if-let [body (:element/body e)]
+        [body]
+        (if-let [children (:element/children e)]
+          children
+          (if-let [component (:prototype/component e)]
+            [(-> component
+                 ::value
+                 :component/body)])))))
 
 (defn element-make-node [elem children]
   (if (:element/body elem)
@@ -811,17 +903,18 @@
   (dispatch! ::update-elem eid
              (fn [elem]
                {:element/type ::prototype
+                :prototype/args {:element/type ::code
+                                 :element/code {}}
+                :element/id (random-uuid)
                 :prototype/component
                 {:element/type ::define
                  :element/id (random-uuid)
+                 :define/meta {}
                  ::id eid
                  ::value {:element/type ::component
-                          :component/name 'my-component
+                          :element/id (random-uuid)
                           :component/args []
-                          :component/body elem}}
-                :prototype/args {:element/type ::code
-                                 :element/code {}}
-                :element/id (random-uuid)})))
+                          :component/body elem}}})))
 
 
 (defeffect ::wrap-translate [eid]
@@ -1004,34 +1097,8 @@
         (clojure.pprint/pprint e)))))
 
 (defui prototype-detail-editor [{:keys [elem]}]
-  (let [editing? (get extra :editing?)]
-    (if editing?
-      (let [buf (get extra :buf)
-            buf (or buf
-                    (buffer/buffer (with-out-str
-                                     (clojure.pprint/pprint
-                                      (-> elem
-                                          :prototype/component
-                                          ::value
-                                          :component/args)))
-                                   {:rows 40 :cols 15
-                                    :mode :insert}))]
-        (ui/vertical-layout
-         (basic/button {:text "done"
-                        :on-click (fn []
-                                    [[:set $editing? false]
-                                     [::update-prototype (:element/id elem) buf]
-                                     [:delete $buf]]
-                                    )})
-         (code-editor/text-editor {:buf buf})))
-      
-      ;; else
-      (ui/vertical-layout
-       (basic/button {:text "edit"
-                      :on-click (fn []
-                                  [[:set $editing? true]])})
-       (viscous/inspector {:obj (viscous/wrap elem)}))
-      ))
+  (property-detail-editor {:elem elem
+                           :properties [:prototype/args]})
   )
 
 (defui for-detail-editor [{:keys [elem]}]
@@ -1068,6 +1135,18 @@
                            :properties [:element/text
                                         :element/width]}))
 
+
+(defui component-detail-editor [{:keys [elem]}]
+  (property-detail-editor {:elem elem
+                           :properties [:component/name
+                                        :component/args
+                                        :component/default]}))
+
+
+(defui define-detail-editor [{:keys [elem]}]
+  (property-detail-editor {:elem elem
+                           :properties [:define/meta]}))
+
 (defui detail-editor [{:keys [elem]}]
   (ui/vertical-layout
    (ui/horizontal-layout
@@ -1094,80 +1173,102 @@
      ::translate (translate-detail-editor {:elem elem})
      ::prototype (prototype-detail-editor {:elem elem})
      ::for (for-detail-editor {:elem elem})
+     ::component (component-detail-editor {:elem elem})
      ::paragraph (paragraph-detail-editor {:elem elem})
+     ::define (define-detail-editor {:elem elem})
      ;; else
      (viscous/inspector {:obj (viscous/wrap elem)})))
   )
 
 (defui main-view [{:keys [root selection collapsed interns selected-tool]}]
-  (let [[cw ch :as size] (:membrane.stretch/container-size context)]
-    (dnd/drag-and-drop
-     {:$body nil
-      :body
-      (stretch/hlayout
-       [[(basic/scrollview {:$body nil
-                            :body
-                            (ui/on
-                             ::select
-                             (fn [eid]
-                               [[:update $selection stoggle eid]])
+  (let [[cw ch :as size] (:membrane.stretch/container-size context)
+        ctrl-down? (get extra ::ctrl-down?)]
+    (ui/on
+     :key-event
+     (fn [key scancode action mods]
+       (case key
+         343 (case action
+               :press [[:set $ctrl-down? true]]
+               :release [[:set $ctrl-down? false]]
+               ;; else
+               nil)
 
-                             ::toggle-collapse
-                             (fn [eid]
-                               [[:update $collapsed stoggle eid]])
-                             (ui/vertical-layout
-                              (ui/horizontal-layout
-                               (basic/button {:text "clear selection"
-                                              :on-click (fn []
-                                                          [[:set $selection #{}]])})
-                               (basic/button {:text "debug"
-                                              :on-click (fn []
-                                                          (init!)
-                                                          nil)}))
-                              (tree-view {:branch? element-branch?
-                                          :children element-children
-                                          :selection selection
-                                          :collapse? collapsed
-                                          :root root})))
-                            :scroll-bounds [400 ch]})
-         (ui/with-style ::ui/style-stroke
-           (ui/with-color [0 0 0]
-             (ui/rectangle 400 ch)))]
-        (stretch/with-container-size [(max 0
-                                           (- cw 400 400))
-                                      ch]
-          (ui/scissor-view
-           [0 0]
-           [(max 0
-                 (- cw 400 400))
-            ch]
-           (tool-selector {:selected-tool selected-tool
-                           :root root
-                           :selection selection
-                           :interns interns})))
+         ;; default
+         nil))
+     (dnd/drag-and-drop
+      {:$body nil
+       :body
+       (stretch/hlayout
+        [[(basic/scrollview {:$body nil
+                             :body
+                             (ui/on
+                              ::select
+                              (fn [eid]
+                                [[:update $selection
+                                  (if ctrl-down?
+                                    (fn [selection]
+                                      (stoggle selection eid))
+                                    (fn [selection]
+                                      (if (contains? selection eid)
+                                        (disj selection eid)
+                                        #{eid})))]])
 
-        (when (> (- cw 400)
-                 400)
-          (stretch/with-container-size [400
-                                        ch]
-            (ui/bordered
-             (ui/fixed-bounds
-              [400 ch]
-              (when-let [eid (first selection)]
+                              ::toggle-collapse
+                              (fn [eid]
+                                [[:update $collapsed stoggle eid]])
+                              (ui/vertical-layout
+                               (ui/horizontal-layout
+                                (basic/button {:text "clear selection"
+                                               :on-click (fn []
+                                                           [[:set $selection #{}]])})
+                                (basic/button {:text "debug"
+                                               :on-click (fn []
+                                                           (init!)
+                                                           nil)}))
+                               (tree-view {:branch? element-branch?
+                                           :children element-children
+                                           :selection selection
+                                           :collapse? collapsed
+                                           :root root})))
+                             :scroll-bounds [400 ch]})
+          (ui/with-style ::ui/style-stroke
+            (ui/with-color [0 0 0]
+              (ui/rectangle 400 ch)))]
+         (stretch/with-container-size [(max 0
+                                            (- cw 400 400))
+                                       ch]
+           (ui/scissor-view
+            [0 0]
+            [(max 0
+                  (- cw 400 400))
+             ch]
+            (tool-selector {:selected-tool selected-tool
+                            :root root
+                            :selection selection
+                            :interns interns})))
+
+         (when (> (- cw 400)
+                  400)
+           (stretch/with-container-size [400
+                                         ch]
+             (ui/bordered
+              (ui/fixed-bounds
+               [400 ch]
+               (when-let [eid (first selection)]
                 
-                (when-let [elem (->> (tree-seq
-                                      element-branch?
-                                      element-children
-                                      root)
-                                     (filter #(= eid (:element/id %)))
-                                     first)]
-                  (ui/on
-                   ::delete-elem
-                   (fn [eid]
-                     [[::delete-elem eid]
-                      [:update $selection disj eid]])
-                   (detail-editor {:elem elem}))))
-              ))))])})))
+                 (when-let [elem (->> (tree-seq
+                                       element-branch?
+                                       element-children
+                                       root)
+                                      (filter #(= eid (:element/id %)))
+                                      first)]
+                   (ui/on
+                    ::delete-elem
+                    (fn [eid]
+                      [[::delete-elem eid]
+                       [:update $selection disj eid]])
+                    (detail-editor {:elem elem}))))
+               ))))])}))))
 
 (defn show! []
   (swap! app-state
@@ -1208,23 +1309,25 @@
   `(~(compile component)
     ~(compile args)))
 
-(defmacro define [id value]
+(defmacro define [id value meta]
   `(let [value# ~value]
-     (swap! app-state assoc-in [:interns ~id] value#)
+     (swap! app-state assoc-in [:interns :refs ~id] value#)
+     (swap! app-state assoc-in [:interns :meta ~id] ~meta)
      value#))
 
-(defmethod compile* ::define [{:keys [::id ::value]}]
-  `(define ~id ~(compile value)))
+(defmethod compile* ::define [{:keys [::id ::value]
+                               meta :define/meta}]
+  `(define ~id ~(compile value) ~meta))
 
 (defmethod compile* ::reference [{:keys [::id]}]
-  `(get ~'interns ~id))
+  `(get-in ~'interns [:refs ~id]))
 
 (defmethod compile* ::component [{:keys [component/name
                                          component/args
                                          component/body]}]
   
-  `(fn ~(symbol
-         (clojure.core/name name))
+  `(fn ;; ~(symbol
+       ;;   (clojure.core/name name))
      [{:keys [~@(eduction
                  (map symbol)           
                  args)]}]
@@ -1238,5 +1341,64 @@
     ~(compile args)))
 
 
+(defn prototype->defui [p]
+  (let [elem-name (-> p
+                      :prototype/component
+                      :define/meta
+                      :name
+                      symbol)
+        component (-> p
+                      :prototype/component
+                      ::value)
+        {:keys [component/args
+                component/body]} component
+        ]
+    `(defui ~elem-name [{:keys [~@(eduction
+                                   (map symbol)
+                                   args)]}]
+       ~(compile body))))
+
+(defn export [root]
+  (let [prototypes
+        (specter/select
+         [WALK-ELEM
+          #(= ::prototype (:element/type %))]
+         root)
+        id->sym
+        (into {}
+              (map (fn [p]
+                     (let [id (-> p
+                                  :prototype/component
+                                  ::id)
+                           sym (-> p
+                                   :prototype/component
+                                   :define/meta
+                                   :name
+                                   symbol)]
+                       [id sym])))
+              prototypes)
+
+        ref-path [specter/ALL
+                  WALK-ELEM
+                  #(= ::instance (:element/type %))
+                  :instance/component
+                  map?
+                  #(= ::reference (:element/type %))
+                  ]
+        prototypes
+        (specter/transform
+         ref-path
+         (fn [{id ::id}]
+           (id->sym id))
+         prototypes)]
 
 
+    `(do
+       ~@(mapv prototype->defui prototypes))))
+
+
+(comment
+
+  (eval (export (:root @app-state)))
+  (skia/run (component/make-app #'todo-app my-todo-state) )
+  ,)
