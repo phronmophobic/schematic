@@ -52,6 +52,9 @@
         (nil? o))
     o
 
+    (seq? o)
+    o
+
     (seqable? o)
     (into (empty o)
           (map compile)
