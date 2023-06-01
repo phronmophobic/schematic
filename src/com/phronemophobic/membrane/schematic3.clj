@@ -13,6 +13,8 @@
             [zippo.core :as zippo]
             [clojure.test.check.generators :as gen]
             [membrane.basic-components :as basic]
+            [flatland.ordered.map :refer
+             [ordered-map]]
             [membrane.component :as component
              :refer [defui defeffect]]
             [membrane.ui :as ui]
@@ -247,50 +249,11 @@
 
 
 
-(defui component-toolbar [{:keys [selected-component interns]}]
+(defui component-toolbar [{:keys [selected-component interns
+                                  components]}]
   (let [options
         (into
-         [[:checkbox {:element/type ::instance
-                      :instance/args
-                      {:element/type ::code
-                       :element/code {:checked? true}}
-                      :instance/component `basic/checkbox}]
-          [:paragraph {:element/type ::paragraph
-                       :element/text "label"
-                       :element/width nil}]
-          [:textarea {:element/type ::instance
-                      :instance/args
-                      {:element/type ::code
-                       :element/code {:text "text"}}
-                      :instance/component `basic/textarea}]
-          [:dropdown {:element/type ::instance
-                      :instance/args
-                      {:element/type ::code
-                       :element/code {:options [[:this "This"]
-                                                [:that "That "]
-                                                [:the-other "The Other"]]
-                                      :open? true}}
-                      :instance/component `basic/dropdown}]
-          [:button {:element/type ::instance
-                    :instance/args
-                    {:element/type ::code
-                     :element/code {:text "button"}}
-                    :instance/component `basic/button}]
-          [:number-slider {:element/type ::instance
-                           :instance/args
-                           {:element/type ::code
-                            :element/code {:num 3
-                                           :min 0
-                                           :max 20}}
-                           :instance/component `basic/number-slider}]
-          [:group {:element/type ::group
-                   :element/children []}]
-          [:vertical-layout
-           {:element/type ::vertical-layout
-            :element/children []}]
-          [:horizontal-layout
-           {:element/type ::horizontal-layout
-            :element/children []}]]
+         components
          (for [[k v] (:refs interns)
                :let [lbl (if-let [lbl (get-in interns [:meta k :name])]
                            (name lbl)
@@ -301,22 +264,22 @@
                              :element/code {}}
              :instance/component {:element/type ::reference
                                   ::id k}}]))]
-   (apply
-    ui/vertical-layout
-    (for [chunk (partition-all 6 options)]
-      (apply
-       ui/horizontal-layout
-       (for [[k v] chunk]
-         (let [hover? (get extra [:hover? k])
-               hover? (or hover?
-                          (= selected-component
-                             v))]
-           (basic/button {:text (truncate (name k) 10)
-                          :hover? hover?
-                          :on-click
-                          (fn []
-                            [[:set $selected-component v]])})))
-       )))))
+    (apply
+     ui/vertical-layout
+     (for [chunk (partition-all 6 options)]
+       (apply
+        ui/horizontal-layout
+        (for [[k v] chunk]
+          (let [hover? (get extra [:hover? k])
+                hover? (or hover?
+                           (= selected-component
+                              v))]
+            (basic/button {:text (truncate (name k) 10)
+                           :hover? hover?
+                           :on-click
+                           (fn []
+                             [[:set $selected-component v]])})))
+        )))))
 
 
 
@@ -389,6 +352,7 @@
                                                   30 30)))
            ]))))
      (component-toolbar {:selected-component selected-component
+                         :components components
                          :interns interns})])
   )
 
@@ -508,7 +472,7 @@
     main))
 
 
-(defui tool-selector [{:keys [selected-tool root selection interns]}]
+(defui tool-selector [{:keys [selected-tool root selection interns components]}]
   (ui/vertical-layout
    (apply
     ui/horizontal-layout
@@ -524,9 +488,9 @@
                        :on-click
                        (fn []
                          [[:set $selected-tool tool-key]])}))))
-
    (case selected-tool
      :place-element-tool (place-element-tool {:root root
+                                              :components components
                                               :interns interns
                                               :selection selection})
 
@@ -727,6 +691,48 @@
           :element/body {:element/type ::group
                          :element/id ::root-group
                          :element/children []}}
+   :components (ordered-map
+                :checkbox {:element/type ::instance
+                           :instance/args
+                           {:element/type ::code
+                            :element/code {:checked? true}}
+                           :instance/component `basic/checkbox}
+                :paragraph {:element/type ::paragraph
+                            :element/text "label"
+                            :element/width nil}
+                :textarea {:element/type ::instance
+                           :instance/args
+                           {:element/type ::code
+                            :element/code {:text "text"}}
+                           :instance/component `basic/textarea}
+                :dropdown {:element/type ::instance
+                           :instance/args
+                           {:element/type ::code
+                            :element/code {:options [[:this "This"]
+                                                     [:that "That "]
+                                                     [:the-other "The Other"]]
+                                           :open? true}}
+                           :instance/component `basic/dropdown}
+                :button {:element/type ::instance
+                         :instance/args
+                         {:element/type ::code
+                          :element/code {:text "button"}}
+                         :instance/component `basic/button}
+                :number-slider {:element/type ::instance
+                                :instance/args
+                                {:element/type ::code
+                                 :element/code {:num 3
+                                                :min 0
+                                                :max 20}}
+                                :instance/component `basic/number-slider}
+                :group {:element/type ::group
+                        :element/children []}
+                :vertical-layout
+                {:element/type ::vertical-layout
+                 :element/children []}
+                :horizontal-layout
+                {:element/type ::horizontal-layout
+                 :element/children []})
    :selected-tool :place-element-tool
    :interns {}
    :selection #{}
@@ -1243,6 +1249,7 @@
                   (- cw 400 400))
              ch]
             (tool-selector {:selected-tool selected-tool
+                            :components components
                             :root root
                             :selection selection
                             :interns interns})))
@@ -1303,7 +1310,18 @@
 
 
 
-
+(defn add-component! [var defaults]
+  (let [id (keyword (name (.sym var)))
+        sym (symbol (name (ns-name (.ns var)))
+                    (name (.sym var)))]
+    (swap! app-state
+           assoc-in
+           [:components id]
+           {:element/type ::instance
+            :instance/args
+            {:element/type ::code
+             :element/code defaults}
+            :instance/component sym})))
 
 (defmethod compile* ::prototype [{:prototype/keys [component args]}]
   `(~(compile component)
