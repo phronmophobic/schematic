@@ -206,6 +206,14 @@
   (into []
         (map compile children)))
 
+(defmethod compile* ::on [{:element/keys [children events]}]
+  `(ui/on
+    ~@(eduction
+       cat
+       events)
+    ~(into []
+        (map compile children))))
+
 (defmethod compile* ::for [{:element/keys [body layout]
                             :element.for/keys [x xs]}]
   (let [layout (case layout
@@ -295,11 +303,19 @@
 (def render2
   (memoize
    (fn [form]
-     (eval
-      `(fn [~'interns]
-         ~(compile2 form))))))
+     (try
+       (eval
+        `(fn [~'interns]
+           (try
+             ~(compile2 form)
+             (catch Exception e#
+               (clojure.pprint/pprint e#)
+               (ui/label e#)))))
+       (catch Exception e
+         (constantly
+          (ui/label e)))))))
 
-(defui place-element-tool [{:keys [root selection mpos selected-component interns]}]
+(defui place-element-tool [{:keys [root selection mpos selected-component interns components]}]
   (let [[cw ch :as size] (:membrane.stretch/container-size context)]
     [(ui/on
       :mouse-move
@@ -322,19 +338,19 @@
                                                       ::id)
                                                   :defaults]))
                        selected-component)]
-           [[:update $root
-             update-in
-             [:element/body
-              :element/children]
-             conj
+            [[:update $root
+              update-in
+              [:element/body
+               :element/children]
+              conj
 
-             {:element/type ::translate
-              :element/id (random-uuid)
-              :element/x mx
-              :element/y my
-              :element/body
-              (assoc elem
-                     :element/id (random-uuid))}]])))
+              {:element/type ::translate
+               :element/id (random-uuid)
+               :element/x mx
+               :element/y my
+               :element/body
+               (assoc elem
+                      :element/id (random-uuid))}]])))
       (ui/fixed-bounds
        [cw ch]
        (ui/no-events
@@ -662,10 +678,13 @@
    (save! (:root @app-state)))
   ([root]
    (prn "saving...")
-   (with-open [w (io/writer "saves/latest-save.edn")]
-     (write-edn w root))
-   (with-open [w (io/writer (str "saves/save-" (now-str) ".edn"))]
-     (write-edn w root))
+   (try
+    (with-open [w (io/writer "saves/latest-save.edn")]
+      (write-edn w root))
+    (with-open [w (io/writer (str "saves/save-" (now-str) ".edn"))]
+      (write-edn w root))
+    (catch Exception e
+      (clojure.pprint/pprint e)))
    (reset! last-save (System/currentTimeMillis))
    nil))
 (defn maybe-save [root]
@@ -903,6 +922,15 @@
   (dispatch! ::update-elem eid
              (fn [elem]
                {:element/type ::group
+                :element/children
+                [elem]
+                :element/id (random-uuid)})))
+
+(defeffect ::wrap-on [eid]
+  (dispatch! ::update-elem eid
+             (fn [elem]
+               {:element/type ::on
+                :element/events {}
                 :element/children
                 [elem]
                 :element/id (random-uuid)})))
@@ -1156,6 +1184,10 @@
   (property-detail-editor {:elem elem
                            :properties [:define/meta]}))
 
+(defui on-detail-editor [{:keys [elem]}]
+  (property-detail-editor {:elem elem
+                           :properties [:element/events]}))
+
 (defui detail-editor [{:keys [elem]}]
   (ui/vertical-layout
    (ui/horizontal-layout
@@ -1175,7 +1207,11 @@
     (basic/button {:text "for"
                    :on-click
                    (fn []
-                     [[::wrap-for (:element/id elem)]])}))
+                     [[::wrap-for (:element/id elem)]])})
+    (basic/button {:text "onize"
+                   :on-click
+                   (fn []
+                     [[::wrap-on (:element/id elem)]])}))
    (case (:element/type elem)
      ::let (let-detail-editor {:elem elem})
      ::instance (instance-detail-editor {:elem elem})
@@ -1185,11 +1221,12 @@
      ::component (component-detail-editor {:elem elem})
      ::paragraph (paragraph-detail-editor {:elem elem})
      ::define (define-detail-editor {:elem elem})
+     ::on (on-detail-editor {:elem elem})
      ;; else
      (viscous/inspector {:obj (viscous/wrap elem)})))
   )
 
-(defui main-view [{:keys [root selection collapsed interns selected-tool]}]
+(defui main-view [{:keys [root selection collapsed interns selected-tool components]}]
   (let [[cw ch :as size] (:membrane.stretch/container-size context)
         ctrl-down? (get extra ::ctrl-down?)]
     (ui/on
@@ -1346,13 +1383,24 @@
 (defmethod compile* ::component [{:keys [component/name
                                          component/args
                                          component/body]}]
+
   
   `(fn ;; ~(symbol
-       ;;   (clojure.core/name name))
+     ;;   (clojure.core/name name))
      [{:keys [~@(eduction
                  (map symbol)           
-                 args)]}]
-     ~(compile body)))
+                 args)]
+       :as m#}]
+     ;; ;; (component/path-replace '$foo {'foo [{} (delay [nil '(keypath :foo)])]})
+     (let [~'extra (get m# :extra)
+           ~'context (get m# :context)]
+       ~(component/path-replace
+         (compile body)
+         (into
+          {}
+          (map (fn [arg]
+                 [(symbol arg) [{} (delay [nil (list 'quote (list 'keypath arg))])]])
+               (conj args :extra :context)))))))
 
 (defmethod compile* ::code [{:element/keys [code]}]
   code)
@@ -1409,8 +1457,11 @@
         prototypes
         (specter/transform
          ref-path
-         (fn [{id ::id}]
-           (id->sym id))
+         (fn [{id ::id :as original}]
+           (if-let [sym (id->sym id)]
+             sym
+             original
+             ))
          prototypes)]
 
 
