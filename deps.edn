@@ -23,6 +23,8 @@
         org.clojure/test.check {:mvn/version "1.1.0"}
 
         com.phronemophobic/search {:local/root "../search"}
+        org.flatland/ordered {:mvn/version "1.15.11"}
+
 
         }
  :aliases
