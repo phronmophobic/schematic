@@ -1,5 +1,5 @@
 (ns com.phronemophobic.membrane.schematic3
-  (:refer-clojure :exclude [compile])
+  (:refer-clojure :exclude [compile load-file])
   (:require [clojure.spec.alpha :as s]
             [com.phronemophobic.viscous :as viscous]
             [membrane.components.code-editor.code-editor
@@ -101,32 +101,29 @@
         [x y]))))
 
 (defn highlight-selection [view selection]
-  (loop [highlight []
-         zview (ui-zip view)]
+  (try
+    (loop [highlight []
+           zview (ui-zip view)]
 
-    (if (z/end? zview)
-      highlight
-      (let [view (z/node zview)
-            ast (-> view
-                    meta
-                    ::ast)
-            eid (:element/id ast)]
-        #_(when (selection eid)
-            (clojure.pprint/pprint
-             {:id (:element/id ast)
-              :coord (global-coord zview)
-              :bounds (ui/bounds view)}))
-
-        (recur (if (selection eid)
-                 (conj highlight
-                       (let [[gx gy] (global-coord zview)
-                             [w h] (ui/bounds view)]
-                         (ui/translate gx gy
-                                       (ui/filled-rectangle [0 1 0]
-                                                            (max 5 w)
-                                                            (max 5 h)))))
-                 highlight)
-               (z/next zview))))))
+      (if (z/end? zview)
+        highlight
+        (let [view (z/node zview)
+              ast (-> view
+                      meta
+                      ::ast)
+              eid (:element/id ast)]
+          (recur (if (selection eid)
+                   (conj highlight
+                         (let [[gx gy] (global-coord zview)
+                               [w h] (ui/bounds view)]
+                           (ui/translate gx gy
+                                         (ui/filled-rectangle [0 1 0]
+                                                              (max 5 w)
+                                                              (max 5 h)))))
+                   highlight)
+                 (z/next zview)))))
+    (catch Exception e
+      nil)))
 
 (s/def :element/id uuid?)
 #_(s/def :element/type
@@ -289,17 +286,14 @@
                            :hover? hover?
                            :on-click
                            (fn []
-                             [[:set $selected-component v]])})))
-        )))))
-
-
-
-
-(declare my-component)
-(def eval-ns *ns*)
+                             [[:set $selected-component v]])}))))))))
 
 (def compile2
   (memoize compile))
+
+(defn on-draw-error [draw e]
+  (draw (ui/label e)))
+
 (def render2
   (memoize
    (fn [form]
@@ -307,11 +301,14 @@
        (eval
         `(fn [~'interns]
            (try
-             ~(compile2 form)
+             (ui/try-draw
+              ~(compile2 form)
+              on-draw-error)
              (catch Exception e#
                (clojure.pprint/pprint e#)
                (ui/label e#)))))
        (catch Exception e
+         (clojure.pprint/pprint e)
          (constantly
           (ui/label e)))))))
 
@@ -355,7 +352,7 @@
        [cw ch]
        (ui/no-events
         (let [view
-              (binding [*ns* eval-ns]
+              (binding [*ns* (:eval-ns context)]
                 (let [f (render2 root)]
                   (f interns)))
               view (if selection
@@ -388,6 +385,9 @@
           ::ast
           :element/id))))
 
+(defeffect ::get-eval-ns []
+  (dispatch! :get (specter/path ::component/context :eval-ns)))
+
 (defeffect ::select-element-at-point [$selection view mpos]
   (let [eid (find-elem-at-point view mpos)]
     (if eid
@@ -400,6 +400,7 @@
 
 (defui select-element-tool [{:keys [root selection selected-component interns]}]
   (let [[cw ch :as size] (:membrane.stretch/container-size context)
+        eval-ns (:eval-ns context)
         view
         (binding [*ns* eval-ns]
           (let [f (render2 root)]
@@ -459,6 +460,7 @@
 (defui move-element-tool [{:keys [root selection selected-component interns]}]
   (let [drag-state (get extra :drag-state)
         [cw ch :as size] (:membrane.stretch/container-size context)
+        eval-ns (:eval-ns context)
         view
         (binding [*ns* eval-ns]
           (let [f (render2 root)]
@@ -466,8 +468,7 @@
         highlighted-view
         (if selection
           [(highlight-selection view selection)
-           view
-           ]
+           view]
           view)
 
         main (ui/fixed-bounds
@@ -541,11 +542,18 @@
 
 (defn elem-label [elem selected?]
   (let [type (:element/type elem)
-        lbl (ui/label (name (if (= ::instance type)
+        lbl (ui/label (name (case type
+
+                              ::component
+                              (str "def (" (:component/name elem) ")")
+
+                              ::instance
                               (let [component (:instance/component elem)]
                                 (if (symbol? component)
                                   component
                                   type))
+
+                              ;; else
                               type)))
         view (if selected?
                (ui/fill-bordered [0.9 0.9 0.9]
@@ -760,15 +768,25 @@
    :selection #{}
    :collapsed #{}})
 
+(defn load-file [fname]
+  (with-open [rdr (io/reader fname)
+              pbr (java.io.PushbackReader. rdr)]
+    (edn/read pbr)))
+
 (defn load-latest []
   (with-open [rdr (io/reader "saves/latest-save.edn")
               pbr (java.io.PushbackReader. rdr)]
     (edn/read pbr)))
 
-(defn load! []
-  (reset! app-state
-          (assoc initial-state
-                 :root (load-latest))))
+(defn load!
+  ([fname]
+   (reset! app-state
+           (assoc initial-state
+                  :root (load-file fname))))
+  ([]
+   (reset! app-state
+           (assoc initial-state
+                  :root (load-latest)))))
 
 (defn init! []
   (reset! app-state initial-state)
@@ -819,7 +837,7 @@
     (try
       (let [txt (buffer/text buf)
             data
-            (binding [*ns* eval-ns]
+            (binding [*ns* (dispatch! ::get-eval-ns)]
               (read-string txt))]
         (dispatch! ::update-elem eid
                    (fn [elem]
@@ -881,7 +899,7 @@
 (defeffect ::update-let-binding [eid i binding-str code-str]
   (future
     (try
-      (let [
+      (let [eval-ns (dispatch! ::get-eval-ns)
             binding
             (binding [*ns* eval-ns]
               (read-string binding-str))
@@ -939,19 +957,13 @@
 (defeffect ::wrap-component [eid]
   (dispatch! ::update-elem eid
              (fn [elem]
-               {:element/type ::prototype
-                :prototype/args {:element/type ::code
-                                 :element/code {}}
+               {:element/type ::component
                 :element/id (random-uuid)
-                :prototype/component
-                {:element/type ::define
-                 :element/id (random-uuid)
-                 :define/meta {}
-                 ::id eid
-                 ::value {:element/type ::component
-                          :element/id (random-uuid)
-                          :component/args []
-                          :component/body elem}}})))
+                :component/name (str (gensym "com-"))
+                :component/args []
+                :component/defaults {:element/type ::code
+                                     :element/code {}}
+                :component/body elem})))
 
 
 (defeffect ::wrap-translate [eid]
@@ -1060,7 +1072,7 @@
   (future
     (try
       (let [data
-            (binding [*ns* eval-ns]
+            (binding [*ns* (dispatch! ::get-eval-ns)]
               (read-string txt))]
         (dispatch! ::update-elem eid
                    (fn [elem]
@@ -1074,7 +1086,7 @@
     (try
       (let [txt (buffer/text buf)
             data
-            (binding [*ns* eval-ns]
+            (binding [*ns* (dispatch! ::get-eval-ns)]
               (read-string txt))]
         (dispatch! ::update-elem eid
                    (fn [elem]
@@ -1121,7 +1133,7 @@
     (try
       (let [txt (buffer/text buf)
             data
-            (binding [*ns* eval-ns]
+            (binding [*ns* (dispatch! ::get-eval-ns)]
               (read-string txt))]
         (dispatch! ::update-elem eid
                    (fn [elem]
@@ -1177,7 +1189,7 @@
   (property-detail-editor {:elem elem
                            :properties [:component/name
                                         :component/args
-                                        :component/default]}))
+                                        :component/defaults]}))
 
 
 (defui define-detail-editor [{:keys [elem]}]
@@ -1226,6 +1238,7 @@
      (viscous/inspector {:obj (viscous/wrap elem)})))
   )
 
+(declare export)
 (defui main-view [{:keys [root selection collapsed interns selected-tool components]}]
   (let [[cw ch :as size] (:membrane.stretch/container-size context)
         ctrl-down? (get extra ::ctrl-down?)]
@@ -1270,6 +1283,11 @@
                                 (basic/button {:text "debug"
                                                :on-click (fn []
                                                            (init!)
+                                                           nil)})
+                                (basic/button {:text "eval"
+                                               :on-click (fn []
+                                                           (binding [*ns* (:eval-ns context)]
+                                                             (eval (export (:root @app-state))))
                                                            nil)}))
                                (tree-view {:branch? element-branch?
                                            :children element-children
@@ -1317,16 +1335,24 @@
                     (detail-editor {:elem elem}))))
                ))))])}))))
 
-(defn show! []
-  (swap! app-state
-         (fn [s]
-           (if s
-             s
-             initial-state)))
-  (skia/run (component/make-app #'main-view
-                                app-state)
-    {:include-container-info true}
-    )
+
+
+(defn show!
+  ([]
+   (show! *ns*))
+  ([eval-ns]
+   (swap! app-state
+          (fn [s]
+            (let [s (if s
+                      s
+                      initial-state)]
+              (assoc-in s
+                        [::component/context :eval-ns]
+                        eval-ns))))
+   (skia/run (component/make-app #'main-view
+                                 app-state)
+     {:include-container-info true}
+     ))
   )
 
 
@@ -1355,13 +1381,17 @@
         sym (symbol (name (ns-name (.ns var)))
                     (name (.sym var)))]
     (swap! app-state
-           assoc-in
-           [:components id]
-           {:element/type ::instance
-            :instance/args
-            {:element/type ::code
-             :element/code defaults}
-            :instance/component sym})))
+           (fn [s]
+             (let [s (if s
+                       s
+                       initial-state)]
+               (assoc-in s
+                         [:components id]
+                         {:element/type ::instance
+                          :instance/args
+                          {:element/type ::code
+                           :element/code defaults}
+                          :instance/component sym}))))))
 
 (defmethod compile* ::prototype [{:prototype/keys [component args]}]
   `(~(compile component)
@@ -1382,25 +1412,28 @@
 
 (defmethod compile* ::component [{:keys [component/name
                                          component/args
-                                         component/body]}]
-
-  
-  `(fn ;; ~(symbol
-     ;;   (clojure.core/name name))
-     [{:keys [~@(eduction
-                 (map symbol)           
-                 args)]
-       :as m#}]
-     ;; ;; (component/path-replace '$foo {'foo [{} (delay [nil '(keypath :foo)])]})
-     (let [~'extra (get m# :extra)
-           ~'context (get m# :context)]
-       ~(component/path-replace
-         (compile body)
-         (into
-          {}
-          (map (fn [arg]
-                 [(symbol arg) [{} (delay [nil (list 'quote (list 'keypath arg))])]])
-               (conj args :extra :context)))))))
+                                         component/body
+                                         component/defaults
+                                         element/id]}]
+  `(let [f#
+         (fn ;; ~(symbol
+           ;;   (clojure.core/name name))
+           [{:keys [~@(eduction
+                       (map symbol)
+                       args)]
+             :as m#}]
+           (let [~'extra (get m# :extra)
+                 ~'context (get m# :context)]
+             ~(component/path-replace
+               (compile body)
+               (into
+                {}
+                (map (fn [arg]
+                       [(symbol arg) [{} (delay [nil (list 'quote (list 'keypath arg))])]])
+                     (conj args :extra :context))))))
+         args# ~(compile defaults)]
+     (define ~id f# {:name ~name})
+     (f# args#)))
 
 (defmethod compile* ::code [{:element/keys [code]}]
   code)
@@ -1410,17 +1443,12 @@
     ~(compile args)))
 
 
-(defn prototype->defui [p]
-  (let [elem-name (-> p
-                      :prototype/component
-                      :define/meta
-                      :name
+(defn component->defui [com]
+  (let [elem-name (-> com
+                      :component/name
                       symbol)
-        component (-> p
-                      :prototype/component
-                      ::value)
         {:keys [component/args
-                component/body]} component
+                component/body]} com
         ]
     `(defui ~elem-name [{:keys [~@(eduction
                                    (map symbol)
@@ -1428,24 +1456,19 @@
        ~(compile body))))
 
 (defn export [root]
-  (let [prototypes
+  (let [components
         (specter/select
          [WALK-ELEM
-          #(= ::prototype (:element/type %))]
+          #(= ::component (:element/type %))]
          root)
         id->sym
         (into {}
-              (map (fn [p]
-                     (let [id (-> p
-                                  :prototype/component
-                                  ::id)
-                           sym (-> p
-                                   :prototype/component
-                                   :define/meta
-                                   :name
-                                   symbol)]
-                       [id sym])))
-              prototypes)
+              (map (fn [com]
+                     [(:element/id com)
+                      (-> com
+                          :component/name
+                          symbol)]))
+              components)
 
         ref-path [specter/ALL
                   WALK-ELEM
@@ -1454,23 +1477,32 @@
                   map?
                   #(= ::reference (:element/type %))
                   ]
-        prototypes
+        components
         (specter/transform
          ref-path
          (fn [{id ::id :as original}]
            (if-let [sym (id->sym id)]
              sym
-             original
-             ))
-         prototypes)]
+             original))
+         components)]
 
 
     `(do
-       ~@(mapv prototype->defui prototypes))))
+       ~@(mapv component->defui components))))
 
 
 (comment
 
   (eval (export (:root @app-state)))
   (skia/run (component/make-app #'todo-app my-todo-state) )
+
+  (count @app-history)
+  (reset! app-state
+          (->> @app-history
+               reverse
+               (drop 5)
+               first))
+
+  
   ,)
+
