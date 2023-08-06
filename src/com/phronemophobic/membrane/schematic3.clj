@@ -689,18 +689,23 @@
            (java.util.Date.)))
 
 (declare app-state)
+(defn save-root! [fname]
+  (let [root (:root @app-state)]
+    (with-open [w (io/writer fname)]
+      (write-edn w root))))
+
 (defn save!
   ([]
    (save! (:root @app-state)))
   ([root]
    (prn "saving...")
    (try
-    (with-open [w (io/writer "saves/latest-save.edn")]
-      (write-edn w root))
-    (with-open [w (io/writer (str "saves/save-" (now-str) ".edn"))]
-      (write-edn w root))
-    (catch Exception e
-      (clojure.pprint/pprint e)))
+     (with-open [w (io/writer "saves/latest-save.edn")]
+       (write-edn w root))
+     (with-open [w (io/writer (str "saves/save-" (now-str) ".edn"))]
+       (write-edn w root))
+     (catch Exception e
+       (clojure.pprint/pprint e)))
    (reset! last-save (System/currentTimeMillis))
    nil))
 (defn maybe-save [root]
