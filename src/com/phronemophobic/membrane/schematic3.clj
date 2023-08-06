@@ -1207,11 +1207,32 @@
                                         :element/width]}))
 
 
+(declare export)
+(defeffect ::show-component [elem]
+  (let [eval-ns (dispatch! ::get-eval-ns)
+        v (binding [*ns* eval-ns]
+            (eval (export elem)))
+        initial-state (-> elem
+                          :component/defaults
+                          :element/code
+                          eval)
+        app (component/make-app v initial-state)]
+    (skia/run app))
+)
+
+
+
 (defui component-detail-editor [{:keys [elem]}]
-  (property-detail-editor {:elem elem
-                           :properties [:component/name
-                                        :component/args
-                                        :component/defaults]}))
+  (ui/vertical-layout
+   (basic/button
+    {:text "show!"
+     :on-click
+     (fn []
+       [[::show-component elem]])})
+   (property-detail-editor {:elem elem
+                            :properties [:component/name
+                                         :component/args
+                                         :component/defaults]})))
 
 
 (defui define-detail-editor [{:keys [elem]}]
@@ -1245,7 +1266,11 @@
     (basic/button {:text "onize"
                    :on-click
                    (fn []
-                     [[::wrap-on (:element/id elem)]])}))
+                     [[::wrap-on (:element/id elem)]])})
+    (basic/button {:text "wrap-onize"
+                   :on-click
+                   (fn []
+                     [[::wrap-wrap-on (:element/id elem)]])}))
    (case (:element/type elem)
      ::let (let-detail-editor {:elem elem})
      ::instance (instance-detail-editor {:elem elem})
@@ -1261,7 +1286,7 @@
      (viscous/inspector {:obj (viscous/wrap elem)})))
   )
 
-(declare export)
+
 (defui main-view [{:keys [root selection collapsed interns selected-tool components]}]
   (let [[cw ch :as size] (:membrane.stretch/container-size context)
         ctrl-down? (get extra ::ctrl-down?)]
