@@ -12,9 +12,9 @@
             [clojure.java.io :as io]
             [zippo.core :as zippo]
             [clojure.test.check.generators :as gen]
-            [membrane.basic-components :as basic]
             [flatland.ordered.map :refer
              [ordered-map]]
+            [membrane.basic-components :as basic]
             [membrane.component :as component
              :refer [defui defeffect]]
             [membrane.ui :as ui]
