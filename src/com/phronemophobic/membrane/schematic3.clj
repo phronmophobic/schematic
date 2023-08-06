@@ -211,6 +211,14 @@
     ~(into []
         (map compile children))))
 
+(defmethod compile* ::wrap-on [{:element/keys [children events]}]
+  `(ui/wrap-on
+    ~@(eduction
+       cat
+       events)
+    ~(into []
+        (map compile children))))
+
 (defmethod compile* ::for [{:element/keys [body layout]
                             :element.for/keys [x xs]}]
   (let [layout (case layout
@@ -953,6 +961,15 @@
                 [elem]
                 :element/id (random-uuid)})))
 
+(defeffect ::wrap-wrap-on [eid]
+  (dispatch! ::update-elem eid
+             (fn [elem]
+               {:element/type ::wrap-on
+                :element/events {}
+                :element/children
+                [elem]
+                :element/id (random-uuid)})))
+
 
 (defeffect ::wrap-component [eid]
   (dispatch! ::update-elem eid
@@ -1234,6 +1251,7 @@
      ::paragraph (paragraph-detail-editor {:elem elem})
      ::define (define-detail-editor {:elem elem})
      ::on (on-detail-editor {:elem elem})
+     ::wrap-on (on-detail-editor {:elem elem})
      ;; else
      (viscous/inspector {:obj (viscous/wrap elem)})))
   )
