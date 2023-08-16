@@ -183,7 +183,128 @@
   ,)
 
 
+(defmethod compile* ::flex-layout [{:element/keys [children]
+                                    :flex/keys [layout]
+                                    :as m}]
+  ;; currently, all properties are literals and
+  ;;    don't use compiled or calculated values
+  (let [{:flex/keys [
+                     ;; #{:flex.direction/row :flex.direction/column}
+                     direction
+                     ;; wrap not used
 
+                     #_ #{:flex.justify-content/start
+                          :flex.justify-content/end
+                          :flex.justify-content/center
+                          :flex.justify-content/space-between
+                          :flex.justify-content/space-around
+                          :flex.justify-content/space-evenly}
+                     ;; need size for for main-axis size
+                     justify-content
+                     ;; need size for cross-size
+                     align-items
+
+                     ;; they also don't make sense with space between justifications of around, between, or evenly.
+                     ;; row-gap and column-gap
+                     gap
+                     ;; use gap in favor or `row-gap` and `column-gap`
+                     ]}
+        layout
+
+        direction (get layout :flex/direction :flex.direction/row)
+        ;; not used
+        wrap (get layout :flex/wrap :flex.wrap/nowrap)
+
+        [ui-size get-size ui-cross-size get-cross-size get-gap make-spacer main-layout align ->alignment]
+        (if (= direction :flex.direction/row)
+          [`ui/width :element/width `ui/height :element/height :flex/gap #(list `ui/spacer % 0) `ui/horizontal-layout `ui/align-row
+           {:flex.align/start :top
+            :flex.align/end :bottom
+            :flex.align/center :center}]
+          [`ui/height :element/height `ui/width :element/width :flex/gap #(list `ui/spacer 0 %) `ui/vertical-layout `ui/align-column
+           {:flex.align/start :left
+            :flex.align/end :right
+            :flex.align/center :center}])
+        fixed-size? (some? (get-size m))]
+    (if fixed-size?
+      (let [ ;; only justify for fixed sizes
+            gap (get-gap layout)
+            justification (:flex/justify-content layout)
+
+            body (compile children)
+            body (if-let [gap (get-gap layout)]
+                   (do
+                     (assert (not (#{:flex.justify-content/space-around
+                                     :flex.justify-content/space-between
+                                     :flex.justify-content/space-evenly} justification))
+                             (str get-gap "  Doesn't make sense with " justification))
+                     `(interpose ~(make-spacer gap)
+                                 ~body))
+                   body)
+            body (if-let [alignment (:flex/align layout)]
+                   `(~align ~(->alignment alignment) ~(get-cross-size m) (vec ~body))
+                   body)
+            body (if-let [justification (get layout :flex/justify-content
+                                             :flex.justify-content/start)]
+                   (case justification
+                     :flex.justify-content/start
+                     `(apply ~main-layout ~body)
+
+                     :flex.justify-content/end
+                     (let [body `(apply ~main-layout ~body)
+                           body# (gensym "body")
+                           offset `(- ~(get-size m)
+                                      (~ui-size ~body#))]
+                       `(let [~body# ~body]
+                          (ui/translate ~@(if (= direction :flex.direction/row)
+                                            [offset 0]
+                                            [0 offset])
+                                        ~body#)))
+
+                     :flex.justify-content/center
+                     (let [body `(apply ~main-layout ~body)
+                           body# (gensym "body")
+                           offset `(/ (- ~(get-size m)
+                                         (~ui-size ~body#))
+                                      2)]
+                       `(let [~body# ~body]
+                          (ui/translate ~@(if (= direction :flex.direction/row)
+                                            [offset 0]
+                                            [0 offset])
+                                        ~body#)))
+
+                     (:flex.justify-content/space-between
+                      :flex.justify-content/space-around
+                      :flex.justify-content/space-evenly)
+                     `(let [body# ~body]
+                        (~(if (= direction :flex.direction/row)
+                            `ui/justify-row-content
+                            `ui/justify-column-content)
+
+                         ~(get {:flex.justify-content/space-between :space-between
+                                :flex.justify-content/space-around :space-around
+                                :flex.justify-content/space-evenly :space-evenly}
+                               justification)
+                         ~(get-size m)
+                         body#)))
+                   ;; else, no justification
+                   body)]
+        body)
+      ;; not fixed size
+      (let [ ;; justify doesn't make sense for non-fixed-width
+            ;; but gaps do.
+            gap (get-gap layout)
+            body (compile children)
+            body (if gap
+                   `(interpose ~(make-spacer gap)
+                               ~body)
+                   body)
+            body `(apply ~main-layout ~body)
+            body (if-let [alignment (:flex/align layout)]
+                   `(~align ~(->alignment (:flex/align layout)) ~(get-cross-size m) ~body)
+                   body)]
+        body)))
+  )
 
 (defmethod compile* ::rectangle [{:element/keys [width height]}]
   `(ui/filled-rectangle [0 0 0] ~width ~height))
