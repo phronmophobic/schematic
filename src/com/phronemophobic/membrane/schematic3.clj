@@ -183,7 +183,7 @@
   ,)
 
 
-(defmethod compile* ::flex-layout [{:element/keys [children]
+(defmethod compile* ::flex-layout [{:element/keys [body]
                                     :flex/keys [layout]
                                     :as m}]
   ;; currently, all properties are literals and
@@ -201,8 +201,11 @@
                           :flex.justify-content/space-evenly}
                      ;; need size for for main-axis size
                      justify-content
-                     ;; need size for cross-size
-                     align-items
+
+                     #_ #{:flex.align/start
+                          :flex.align/end
+                          :flex.align/center}
+                     align
 
                      ;; they also don't make sense with space between justifications of around, between, or evenly.
                      ;; row-gap and column-gap
@@ -231,7 +234,7 @@
             gap (get-gap layout)
             justification (:flex/justify-content layout)
 
-            body (compile children)
+            body (compile body)
             body (if-let [gap (get-gap layout)]
                    (do
                      (assert (not (#{:flex.justify-content/space-around
@@ -294,7 +297,7 @@
       (let [ ;; justify doesn't make sense for non-fixed-width
             ;; but gaps do.
             gap (get-gap layout)
-            body (compile children)
+            body (compile body)
             body (if gap
                    `(interpose ~(make-spacer gap)
                                ~body)
@@ -701,6 +704,7 @@
                                  root)]
                  (if (#{::group
                         ::vertical-layout
+                        ::flex-layout
                         ::horizontal-layout}
                       (:element/type new-parent))
                    (let [elem (specter/select-one
@@ -891,6 +895,8 @@
                                 :instance/component `basic/number-slider}
                 :group {:element/type ::group
                         :element/children []}
+                ;; :layout {:element/type ::flex-layout
+                ;;          :element/body nil}
                 :vertical-layout
                 {:element/type ::vertical-layout
                  :element/children []}
@@ -1108,6 +1114,13 @@
                                      :element/code {}}
                 :component/body elem})))
 
+(defeffect ::wrap-layout [eid]
+  (dispatch! ::update-elem eid
+             (fn [elem]
+               {:element/type ::flex-layout
+                :element/id (random-uuid)
+                :element/body elem})))
+
 
 (defeffect ::wrap-translate [eid]
   (dispatch! ::update-elem eid
@@ -1224,6 +1237,18 @@
         (clojure.pprint/pprint e))))
   )
 
+(defeffect ::assoc-in-elem [eid ks txt]
+  (future
+    (try
+      (let [data
+            (binding [*ns* (dispatch! ::get-eval-ns)]
+              (read-string txt))]
+        (dispatch! ::update-elem eid
+                   (fn [elem]
+                     (assoc-in elem ks data))))
+      (catch Exception e
+        (clojure.pprint/pprint e)))))
+
 (defeffect ::update-translate [eid buf]
   (future
     (try
@@ -1322,6 +1347,58 @@
 
 
 
+(defui flex-layout-detail-editor [{:keys [elem]}]
+  :flex/direction
+  :flex/justify-content
+  :flex/align
+  :flex/gap
+
+  (let [layout (:flex/layout elem)
+        eid (:element/id elem)]
+    (ui/vertical-layout
+     (ui/on
+      ::update-elem-key 
+      (fn [_ k code-str]
+        [[::assoc-in-elem eid
+          [:flex/layout k]
+          code-str]])
+      (property-detail-editor {:elem layout
+                               :properties [:flex/gap]}))
+     (property-detail-editor {:elem elem
+                              :properties [:element/width
+                                           :element/height]})
+     (apply
+      ui/vertical-layout
+      (for [[k options] [[:flex/direction
+                          [[:flex.direction/row "row"]
+                           [:flex.direction/column "column"]] ]
+                         [:flex/justify-content
+                          [[:flex.justify-content/start "start"]
+                           [:flex.justify-content/end "end"]
+                           [:flex.justify-content/center "center"]
+                           [:flex.justify-content/space-between "space-between"]
+                           [:flex.justify-content/space-around "space-around"]
+                           [:flex.justify-content/space-evenly "space-evenly"]
+                           ] ]
+                         [:flex/align
+                          [[:flex.align/start "start"]
+                           [:flex.align/end "end"]
+                           [:flex.align/center "center"]] ]]]
+        (ui/on
+         ::basic/select
+         (fn [_ v]
+           [[::update-elem eid
+             (fn [elem]
+               (assoc-in elem [:flex/layout k] v))]])
+         (ui/horizontal-layout
+          (ui/label k)
+          (ui/spacer 20 0)
+          (basic/dropdown
+           {:options options
+            :selected (get layout k (-> options first first))})))))
+     (viscous/inspector {:obj (viscous/wrap elem)}))))
+
+
 (defui paragraph-detail-editor [{:keys [elem]}]
   (property-detail-editor {:elem elem
                            :properties [:element/text
@@ -1376,6 +1453,9 @@
     (basic/button {:text "translate"
                    :on-click (fn []
                                [[::wrap-translate (:element/id elem)]])})
+    (basic/button {:text "layout"
+                   :on-click (fn []
+                               [[::wrap-layout (:element/id elem)]])})
     (basic/button {:text "groupize"
                    :on-click
                    (fn []
@@ -1403,6 +1483,7 @@
      ::define (define-detail-editor {:elem elem})
      ::on (on-detail-editor {:elem elem})
      ::wrap-on (on-detail-editor {:elem elem})
+     ::flex-layout (flex-layout-detail-editor {:elem elem})
      ;; else
      (viscous/inspector {:obj (viscous/wrap elem)})))
   )
