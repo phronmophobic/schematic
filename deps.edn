@@ -1,11 +1,14 @@
 {:paths ["src" "resources"]
- :deps {org.clojure/clojure {:mvn/version "1.11.1"}
-        com.phronemophobic/membrane {:mvn/version "0.12.2-beta"
-                                         ;;:local/root "../membrane2"
+ :deps {org.clojure/clojure {:mvn/version "1.12.0"}
+        com.phronemophobic/membrane {;; :mvn/version "0.14.1-beta"
+                                     :local/root "../membrane"
                                          }
-        membrane.alpha/stretch {:git/sha "62f1960c1433b60632ec74fd960bc1e208fcb0b4"
-                                :git/url "https://github.com/phronmophobic/membrane.alpha.stretch"}
-        com.phronemophobic/viscous {:mvn/version "1.3.2"}
+
+        membrane.alpha/stretch
+        {:local/root "../membrane.alpha.stretch/"}
+        #_{:git/sha "62f1960c1433b60632ec74fd960bc1e208fcb0b4"
+           :git/url "https://github.com/phronmophobic/membrane.alpha.stretch"}
+        com.phronemophobic/viscous {:mvn/version "1.3.3"}
         com.github.igrishaev/zippo {:mvn/version "0.1.2"}
         datascript/datascript {:mvn/version "1.0.5"}
         mogenslund/liquid {:mvn/version "2.0.3"}
@@ -36,10 +39,10 @@
 
   :project {:jvm-opts ["-Xmx8G"]
             :extra-deps
-            {com.phronemophobic.membrane/skialib-macosx-aarch64 { :mvn/version "0.12-beta"
-                                                                 ;;:local/root "../membrane2/csource/macos-aarch64"
+            {com.phronemophobic.membrane/skialib-macosx-aarch64 { :mvn/version "0.14-beta"
+                                                                 ;;:local/root "../membrane/csource/macos-aarch64"
                                                                  }}
-            com.phronemophobic/membrane {:mvn/version "0.12.2-beta"
-                                         ;;:local/root "../membrane2"
+            com.phronemophobic/membrane {;; :mvn/version "0.12.2-beta"
+                                         :local/root "../membrane"
                                          }}
   }}
