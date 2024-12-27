@@ -574,15 +574,16 @@
                     :selection (into #{} (keys starting-coords))
                     :starting-coords starting-coords})))))
 
-(defeffect ::move-elem [drag-state mpos]
+(defeffect ::move-elem [$root drag-state mpos]
   (let [selection (:selection drag-state)
         starting-coords (:starting-coords drag-state)
         [ox oy] (:start-mpos drag-state)
         [mx my] mpos]
     (dispatch! :update
-               (specter/path [:root WALK-ELEM
-                              (fn [elem]
-                                (selection (:element/id elem)))])
+               [$root
+                (specter/path [WALK-ELEM
+                               (fn [elem]
+                                 (selection (:element/id elem)))])]
                (fn [elem]
                  (let [[sx sy] (get starting-coords (:element/id elem))]
                    (assoc elem
@@ -610,10 +611,10 @@
         main (if drag-state
                (ui/on :mouse-move
                       (fn [mpos]
-                        [[::move-elem drag-state mpos]])
+                        [[::move-elem $root drag-state mpos]])
                       :mouse-up
                       (fn [mpos]
-                        [[::move-elem drag-state mpos]
+                        [[::move-elem $root drag-state mpos]
                          [:set $drag-state nil]])
                       main)
                (ui/on :mouse-down
@@ -694,9 +695,9 @@
                lbl)]
     view))
 
-(defeffect ::reparent-before [eid new-parent-eid i]
+(defeffect ::reparent-before [$root eid new-parent-eid i]
   (dispatch! :update
-             (specter/path :root)
+             $root
              (fn [root]
                (let [new-parent (specter/select-one
                                  [WALK-ELEM #(= new-parent-eid
@@ -972,14 +973,14 @@
     (disj s x)
     (conj s x)))
 
-(defeffect ::update-instance [eid buf]
+(defeffect ::update-instance [$root eid buf]
   (future
     (try
       (let [txt (buffer/text buf)
             data
             (binding [*ns* (dispatch! ::get-eval-ns)]
               (read-string txt))]
-        (dispatch! ::update-elem eid
+        (dispatch! ::update-elem $root eid
                    (fn [elem]
                      (assoc-in elem
                                [:instance/args
@@ -1021,22 +1022,22 @@
 
 
 
-(defeffect ::update-elem [eid f & args]
+(defeffect ::update-elem [$root eid f & args]
   (dispatch! :update
-             (specter/path [:root WALK-ELEM #(= eid (:element/id %))])
+             [$root (specter/path [WALK-ELEM #(= eid (:element/id %))])]
              #(apply f % args)))
 
-(defeffect ::add-let-binding [eid]
+(defeffect ::add-let-binding [$root eid]
   (dispatch! ::update-elem
-             eid
+             $root eid
              (fn [elem]
                (update elem :element/bindings conj '[a {:element/type ::code
                                                         :element/code 42}]))))
-(defeffect ::delete-elem [eid]
+(defeffect ::delete-elem [$root eid]
   (dispatch! :delete
-             (specter/path [:root WALK-ELEM #(= eid (:element/id %))])))
+             [$root (specter/path [ WALK-ELEM #(= eid (:element/id %))])]))
 
-(defeffect ::update-let-binding [eid i binding-str code-str]
+(defeffect ::update-let-binding [$root eid i binding-str code-str]
   (future
     (try
       (let [eval-ns (dispatch! ::get-eval-ns)
@@ -1047,7 +1048,7 @@
             (binding [*ns* eval-ns]
               (read-string code-str))]
         (dispatch! ::update-elem
-                   eid
+                   $root eid
                    (fn [elem]
                      (->> elem
                           (specter/setval [:element/bindings
@@ -1063,8 +1064,8 @@
         (clojure.pprint/pprint e))))
   )
 
-(defeffect ::wrap-for [eid]
-  (dispatch! ::update-elem eid
+(defeffect ::wrap-for [$root eid]
+  (dispatch! ::update-elem $root eid
              (fn [elem]
                {:element/type ::for
                 :element/body elem
@@ -1076,16 +1077,16 @@
                                  `(range 3)}})))
 
 
-(defeffect ::wrap-group [eid]
-  (dispatch! ::update-elem eid
+(defeffect ::wrap-group [$root eid]
+  (dispatch! ::update-elem $root eid
              (fn [elem]
                {:element/type ::group
                 :element/children
                 [elem]
                 :element/id (random-uuid)})))
 
-(defeffect ::wrap-on [eid]
-  (dispatch! ::update-elem eid
+(defeffect ::wrap-on [$root eid]
+  (dispatch! ::update-elem $root eid
              (fn [elem]
                {:element/type ::on
                 :element/events {}
@@ -1093,8 +1094,8 @@
                 [elem]
                 :element/id (random-uuid)})))
 
-(defeffect ::wrap-wrap-on [eid]
-  (dispatch! ::update-elem eid
+(defeffect ::wrap-wrap-on [$root eid]
+  (dispatch! ::update-elem $root eid
              (fn [elem]
                {:element/type ::wrap-on
                 :element/events {}
@@ -1103,8 +1104,8 @@
                 :element/id (random-uuid)})))
 
 
-(defeffect ::wrap-component [eid]
-  (dispatch! ::update-elem eid
+(defeffect ::wrap-component [$root eid]
+  (dispatch! ::update-elem $root eid
              (fn [elem]
                {:element/type ::component
                 :element/id (random-uuid)
@@ -1114,16 +1115,16 @@
                                      :element/code {}}
                 :component/body elem})))
 
-(defeffect ::wrap-layout [eid]
-  (dispatch! ::update-elem eid
+(defeffect ::wrap-layout [$root eid]
+  (dispatch! ::update-elem $root eid
              (fn [elem]
                {:element/type ::flex-layout
                 :element/id (random-uuid)
                 :element/body elem})))
 
 
-(defeffect ::wrap-translate [eid]
-  (dispatch! ::update-elem eid
+(defeffect ::wrap-translate [$root eid]
+  (dispatch! ::update-elem $root eid
              (fn [elem]
                {:element/type ::translate
                 :element/id (random-uuid)
@@ -1224,39 +1225,39 @@
             (ui/label (:element/code (nth binding 1))))))))))
   )
 
-(defeffect ::update-elem-key [eid k txt]
+(defeffect ::update-elem-key [$root eid k txt]
   (future
     (try
       (let [data
             (binding [*ns* (dispatch! ::get-eval-ns)]
               (read-string txt))]
-        (dispatch! ::update-elem eid
+        (dispatch! ::update-elem $root eid
                    (fn [elem]
                      (assoc elem k data))))
       (catch Exception e
         (clojure.pprint/pprint e))))
   )
 
-(defeffect ::assoc-in-elem [eid ks txt]
+(defeffect ::assoc-in-elem [$root eid ks txt]
   (future
     (try
       (let [data
             (binding [*ns* (dispatch! ::get-eval-ns)]
               (read-string txt))]
-        (dispatch! ::update-elem eid
+        (dispatch! ::update-elem $root eid
                    (fn [elem]
                      (assoc-in elem ks data))))
       (catch Exception e
         (clojure.pprint/pprint e)))))
 
-(defeffect ::update-translate [eid buf]
+(defeffect ::update-translate [$root eid buf]
   (future
     (try
       (let [txt (buffer/text buf)
             data
             (binding [*ns* (dispatch! ::get-eval-ns)]
               (read-string txt))]
-        (dispatch! ::update-elem eid
+        (dispatch! ::update-elem $root eid
                    (fn [elem]
                      (assoc elem
                             :element/x (first data)
@@ -1488,102 +1489,131 @@
      (viscous/inspector {:obj (viscous/wrap elem)})))
   )
 
+(defn wrap-root [event $root]
+  (fn [& args]
+   [(into [event $root] args)]))
+(def wrap-root-memo (memoize wrap-root))
+
+(defn wrap-roots [$root events elem]
+  (reduce
+   (fn [elem event]
+     (ui/on event (wrap-root-memo event $root)
+            elem))
+   elem
+   events))
 
 (defui main-view [{:keys [root selection collapsed interns selected-tool components]}]
-  (let [[cw ch :as size] (:membrane.stretch/container-size context)
-        ctrl-down? (get extra ::ctrl-down?)]
-    (ui/on
-     :key-event
-     (fn [key scancode action mods]
-       (case key
-         343 (case action
-               :press [[:set $ctrl-down? true]]
-               :release [[:set $ctrl-down? false]]
-               ;; else
-               nil)
+  (wrap-roots
+   $root
+   [::reparent-before 
+    ::update-instance 
+    ::update-elem 
+    ::add-let-binding 
+    ::delete-elem 
+    ::update-let-binding
+    ::wrap-for
+    ::wrap-group
+    ::wrap-on
+    ::wrap-wrap-on
+    ::wrap-component
+    ::wrap-translate
+    ::update-elem-key
+    ::assoc-in-elem
+    ::update-translate] 
+   (let [[cw ch :as size] (:membrane.stretch/container-size context)
+         ctrl-down? (get extra ::ctrl-down?)]
+     (ui/on
+      :key-event
+      (fn [key scancode action mods]
+        (case key
+          343 (case action
+                :press [[:set $ctrl-down? true]]
+                :release [[:set $ctrl-down? false]]
+                ;; else
+                nil)
 
-         ;; default
-         nil))
-     (dnd/drag-and-drop
-      {:$body nil
-       :body
-       (stretch/hlayout
-        [[(basic/scrollview {:$body nil
-                             :body
-                             (ui/on
-                              ::select
-                              (fn [eid]
-                                [[:update $selection
-                                  (if ctrl-down?
-                                    (fn [selection]
-                                      (stoggle selection eid))
-                                    (fn [selection]
-                                      (if (contains? selection eid)
-                                        (disj selection eid)
-                                        #{eid})))]])
+          ;; default
+          nil))
+      (dnd/drag-and-drop
+       {:$body nil
+        :body
+        (stretch/hlayout
+         [[(basic/scrollview {:$body nil
+                              :body
+                              (ui/on
+                               ::select
+                               (fn [eid]
+                                 [[:update $selection
+                                   (if ctrl-down?
+                                     (fn [selection]
+                                       (stoggle selection eid))
+                                     (fn [selection]
+                                       (if (contains? selection eid)
+                                         (disj selection eid)
+                                         #{eid})))]])
 
-                              ::toggle-collapse
-                              (fn [eid]
-                                [[:update $collapsed stoggle eid]])
-                              (ui/vertical-layout
-                               (ui/horizontal-layout
-                                (basic/button {:text "clear selection"
-                                               :on-click (fn []
-                                                           [[:set $selection #{}]])})
-                                (basic/button {:text "debug"
-                                               :on-click (fn []
-                                                           (init!)
-                                                           nil)})
-                                (basic/button {:text "eval"
-                                               :on-click (fn []
-                                                           (binding [*ns* (:eval-ns context)]
-                                                             (eval (export (:root @app-state))))
-                                                           nil)}))
-                               (tree-view {:branch? element-branch?
-                                           :children element-children
-                                           :selection selection
-                                           :collapse? collapsed
-                                           :root root})))
-                             :scroll-bounds [400 ch]})
-          (ui/with-style ::ui/style-stroke
-            (ui/with-color [0 0 0]
-              (ui/rectangle 400 ch)))]
-         (stretch/with-container-size [(max 0
-                                            (- cw 400 400))
-                                       ch]
-           (ui/scissor-view
-            [0 0]
-            [(max 0
-                  (- cw 400 400))
-             ch]
-            (tool-selector {:selected-tool selected-tool
-                            :components components
-                            :root root
-                            :selection selection
-                            :interns interns})))
+                               ::toggle-collapse
+                               (fn [eid]
+                                 [[:update $collapsed stoggle eid]])
+                               (ui/vertical-layout
+                                (ui/horizontal-layout
+                                 (basic/button {:text "clear selection"
+                                                :on-click (fn []
+                                                            [[:set $selection #{}]])})
+                                 (basic/button {:text "debug"
+                                                :on-click (fn []
+                                                            (init!)
+                                                            nil)})
+                                 (basic/button {:text "eval"
+                                                :on-click (fn []
+                                                            (binding [*ns* (:eval-ns context)]
+                                                              (eval (export (:root @app-state))))
+                                                            nil)}))
+                                (tree-view {:branch? element-branch?
+                                            :children element-children
+                                            :selection selection
+                                            :collapse? collapsed
+                                            :root root})))
+                              :scroll-bounds [400 ch]})
+           (ui/with-style ::ui/style-stroke
+             (ui/with-color [0 0 0]
+               (ui/rectangle 400 ch)))]
+          (stretch/with-container-size [(max 0
+                                             (- cw 400 400))
+                                        ch]
+            (ui/scissor-view
+             [0 0]
+             [(max 0
+                   (- cw 400 400))
+              ch]
+             (tool-selector {:selected-tool selected-tool
+                             :components components
+                             :root root
+                             :selection selection
+                             :interns interns})))
 
-         (when (> (- cw 400)
-                  400)
-           (stretch/with-container-size [400
-                                         ch]
-             (ui/bordered
-              (ui/fixed-bounds
-               [400 ch]
-               (when-let [eid (first selection)]
+          (when (> (- cw 400)
+                   400)
+            (stretch/with-container-size [400
+                                          ch]
+              (ui/bordered
+               (ui/fixed-bounds
+                [400 ch]
+                (when-let [eid (first selection)]
                 
-                 (when-let [elem (->> (tree-seq
-                                       element-branch?
-                                       element-children
-                                       root)
-                                      (filter #(= eid (:element/id %)))
-                                      first)]
-                   (ui/on
-                    ::delete-elem
-                    (fn [eid]
-                      [[::delete-elem eid]
-                       [:update $selection disj eid]])
-                    (detail-editor {:elem elem}))))
-               ))))])}))))
+                  (when-let [elem (->> (tree-seq
+                                        element-branch?
+                                        element-children
+                                        root)
+                                       (filter #(= eid (:element/id %)))
+                                       first)]
+                    (ui/on
+                     ::delete-elem
+                     (fn [eid]
+                       [[::delete-elem eid]
+                        [:update $selection disj eid]])
+                     (detail-editor {:elem elem}))))
+                ))))])})))))
 
 
 
